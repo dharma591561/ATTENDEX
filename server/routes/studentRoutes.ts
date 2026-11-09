@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { db } from '../db/database';
 import { hashPassword, verifyPassword, createSession } from '../services/authService';
-import { validateRollNumber, verifyOtp, hasRecentlyVerifiedOtp } from '../services/otpService';
+import { validateRollNumber, verifyOtp, hasRecentlyVerifiedOtp, createVerificationGrant, validateAndConsumeGrant } from '../services/otpService';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { uploadAvatarMiddleware, validateImageMagicBytes, saveAvatarFile } from '../middleware/upload';
 import { logAuditEvent } from '../services/auditService';
@@ -12,7 +12,7 @@ export const studentRouter = Router();
 // Student Registration
 studentRouter.post('/register', async (req: Request, res: Response) => {
   try {
-    const { fullName, rollNumber, branch, section, email, password, confirmPassword, otp } = req.body;
+    const { fullName, rollNumber, branch, section, email, password, confirmPassword, verificationGrant, otp, profilePhoto } = req.body;
 
     // Validate required fields
     if (!fullName || !rollNumber || !branch || !section || !email || !password || !confirmPassword) {
@@ -40,17 +40,20 @@ studentRouter.post('/register', async (req: Request, res: Response) => {
     }
     const normalizedRoll = rollCheck.normalized;
 
-    // OTP Verification
-    if (otp) {
+    // Determine verification grant to validate
+    let grantToValidate = verificationGrant;
+    if (!grantToValidate && otp) {
+      // If OTP was submitted directly without prior verify-otp call
       const otpCheck = verifyOtp(normalizedEmail, otp, 'STUDENT_REGISTRATION');
       if (!otpCheck.valid) {
         return res.status(400).json({ error: otpCheck.error });
       }
-    } else {
-      const recentlyVerified = hasRecentlyVerifiedOtp(normalizedEmail, 'STUDENT_REGISTRATION');
-      if (!recentlyVerified) {
-        return res.status(400).json({ error: 'Email verification is required before registration.' });
-      }
+      const issued = createVerificationGrant(normalizedEmail, 'STUDENT_REGISTRATION');
+      grantToValidate = issued.grantToken;
+    }
+
+    if (!grantToValidate) {
+      return res.status(400).json({ error: 'Email verification is required before registration.' });
     }
 
     // Check duplicate email
@@ -71,19 +74,40 @@ studentRouter.post('/register', async (req: Request, res: Response) => {
     const profileId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    // Execute transaction to ensure atomicity
+    // Process optional profile photo
+    let photoUrl: string | null = null;
+    if (profilePhoto && typeof profilePhoto === 'string' && profilePhoto.startsWith('data:image/')) {
+      try {
+        const base64Data = profilePhoto.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        const magic = validateImageMagicBytes(buffer);
+        if (magic.valid) {
+          photoUrl = saveAvatarFile(userId, buffer, magic.ext);
+        }
+      } catch {
+        // Optional profile photo error is non-fatal
+      }
+    }
+
+    // Execute transaction to ensure atomic registration and grant consumption
     const registerTx = db.transaction(() => {
-      // 1. Insert user
+      // 1. Validate and consume the verification grant atomically
+      const grantResult = validateAndConsumeGrant(grantToValidate, normalizedEmail, 'STUDENT_REGISTRATION');
+      if (!grantResult.valid) {
+        throw new Error(grantResult.error || 'Invalid verification grant.');
+      }
+
+      // 2. Insert user
       db.prepare(`
         INSERT INTO users (id, email, password_hash, role, status, is_email_verified, created_at, updated_at)
         VALUES (?, ?, ?, 'STUDENT', 'ACTIVE', 1, ?, ?)
       `).run(userId, normalizedEmail, passwordHash, now, now);
 
-      // 2. Insert student profile
+      // 3. Insert student profile
       db.prepare(`
-        INSERT INTO student_profiles (id, user_id, full_name, roll_number, branch, section, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(profileId, userId, fullName.trim(), normalizedRoll, branch.trim().toUpperCase(), section.trim().toUpperCase(), now, now);
+        INSERT INTO student_profiles (id, user_id, full_name, roll_number, branch, section, profile_photo_url, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(profileId, userId, fullName.trim(), normalizedRoll, branch.trim().toUpperCase(), section.trim().toUpperCase(), photoUrl, now, now);
     });
 
     registerTx();
@@ -93,10 +117,11 @@ studentRouter.post('/register', async (req: Request, res: Response) => {
     const userAgent = req.headers['user-agent'];
     const sessionId = createSession(userId, ip, userAgent);
 
+    const isHttps = process.env.NODE_ENV === 'production' || req.secure || req.headers['x-forwarded-proto'] === 'https';
     res.cookie('attendx_session', sessionId, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isHttps,
+      sameSite: isHttps ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -123,7 +148,7 @@ studentRouter.post('/register', async (req: Request, res: Response) => {
           roll_number: normalizedRoll,
           branch: branch.trim().toUpperCase(),
           section: section.trim().toUpperCase(),
-          profile_photo_url: null,
+          profile_photo_url: photoUrl,
         },
       },
       sessionId,
@@ -136,6 +161,9 @@ studentRouter.post('/register', async (req: Request, res: Response) => {
       if (err.message.includes('email')) {
         return res.status(409).json({ error: 'Email address is already registered.' });
       }
+    }
+    if (err.message && (err.message.includes('verification') || err.message.includes('grant') || err.message.includes('Verification'))) {
+      return res.status(400).json({ error: err.message });
     }
     return res.status(500).json({ error: err.message || 'Error completing registration.' });
   }

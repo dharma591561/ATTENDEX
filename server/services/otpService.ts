@@ -195,3 +195,109 @@ export function hasRecentlyVerifiedOtp(email: string, purpose: 'STUDENT_REGISTRA
 
   return Boolean(verified);
 }
+
+const GRANT_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
+
+export function hashGrantToken(token: string): string {
+  const salt = process.env.SESSION_SECRET || 'attendx_grant_salt_secure';
+  return crypto.createHmac('sha256', salt).update(token).digest('hex');
+}
+
+export interface VerificationGrantResult {
+  success: boolean;
+  grantToken: string;
+  expiresAt: number;
+}
+
+/**
+ * Creates and stores a cryptographic verification grant for a verified email and purpose.
+ * Invalidates any prior unconsumed grants for the same email and purpose.
+ */
+export function createVerificationGrant(
+  email: string,
+  purpose: 'STUDENT_REGISTRATION' | 'FACULTY_REGISTRATION' | 'PASSWORD_RESET'
+): VerificationGrantResult {
+  const normalizedEmail = email.trim().toLowerCase();
+  const now = Date.now();
+  const expiresAt = now + GRANT_EXPIRY_MS;
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashGrantToken(rawToken);
+  const id = crypto.randomUUID();
+
+  // Invalidate any unconsumed grant for this email and purpose
+  db.prepare(`
+    UPDATE email_verification_grants
+    SET consumed_at = ?
+    WHERE email = ? AND purpose = ? AND consumed_at IS NULL
+  `).run(now, normalizedEmail, purpose);
+
+  db.prepare(`
+    INSERT INTO email_verification_grants (id, token_hash, email, purpose, expires_at, created_at, consumed_at)
+    VALUES (?, ?, ?, ?, ?, ?, NULL)
+  `).run(id, tokenHash, normalizedEmail, purpose, expiresAt, now);
+
+  return {
+    success: true,
+    grantToken: rawToken,
+    expiresAt,
+  };
+}
+
+export interface GrantValidationResult {
+  valid: boolean;
+  error?: string;
+  grantId?: string;
+}
+
+/**
+ * Validates a verification grant against the normalized email and purpose,
+ * and atomically consumes it if valid.
+ */
+export function validateAndConsumeGrant(
+  grantToken: string,
+  email: string,
+  purpose: 'STUDENT_REGISTRATION' | 'FACULTY_REGISTRATION' | 'PASSWORD_RESET'
+): GrantValidationResult {
+  if (!grantToken || typeof grantToken !== 'string') {
+    return { valid: false, error: 'Email verification grant token is required.' };
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const now = Date.now();
+  const tokenHash = hashGrantToken(grantToken.trim());
+
+  const grant = db.prepare(`
+    SELECT id, email, purpose, expires_at, consumed_at
+    FROM email_verification_grants
+    WHERE token_hash = ?
+  `).get(tokenHash) as { id: string; email: string; purpose: string; expires_at: number; consumed_at: number | null } | undefined;
+
+  if (!grant) {
+    return { valid: false, error: 'Invalid verification grant. Please verify your email again.' };
+  }
+
+  if (grant.email.toLowerCase() !== normalizedEmail) {
+    return { valid: false, error: 'Verification grant was issued to a different email address.' };
+  }
+
+  if (grant.purpose !== purpose) {
+    return { valid: false, error: `Verification grant purpose mismatch (${grant.purpose} cannot be used for ${purpose}).` };
+  }
+
+  if (grant.consumed_at !== null) {
+    return { valid: false, error: 'This verification code/grant has already been used. Please request a new verification code.' };
+  }
+
+  if (now > grant.expires_at) {
+    return { valid: false, error: 'Verification grant has expired. Please verify your email again.' };
+  }
+
+  // Mark as consumed
+  db.prepare(`
+    UPDATE email_verification_grants
+    SET consumed_at = ?
+    WHERE id = ?
+  `).run(now, grant.id);
+
+  return { valid: true, grantId: grant.id };
+}

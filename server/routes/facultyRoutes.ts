@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { db } from '../db/database';
 import { hashPassword, verifyPassword } from '../services/authService';
-import { verifyOtp, hasRecentlyVerifiedOtp } from '../services/otpService';
+import { verifyOtp, hasRecentlyVerifiedOtp, createVerificationGrant, validateAndConsumeGrant } from '../services/otpService';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { uploadAvatarMiddleware, validateImageMagicBytes, saveAvatarFile } from '../middleware/upload';
 import { logAuditEvent } from '../services/auditService';
@@ -12,7 +12,7 @@ export const facultyRouter = Router();
 // Submit Faculty Application
 facultyRouter.post('/applications', async (req: Request, res: Response) => {
   try {
-    const { fullName, department, designation, email, password, confirmPassword, otp } = req.body;
+    const { fullName, department, designation, email, password, confirmPassword, verificationGrant, otp } = req.body;
 
     if (!fullName || !department || !designation || !email || !password || !confirmPassword) {
       return res.status(400).json({ error: 'All fields are required.' });
@@ -32,17 +32,20 @@ facultyRouter.post('/applications', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Please enter a valid email address.' });
     }
 
-    // Verify OTP
-    if (otp) {
+    // Determine verification grant to validate
+    let grantToValidate = verificationGrant;
+    if (!grantToValidate && otp) {
+      // If OTP was submitted directly without prior verify-otp call
       const otpCheck = verifyOtp(normalizedEmail, otp, 'FACULTY_REGISTRATION');
       if (!otpCheck.valid) {
         return res.status(400).json({ error: otpCheck.error });
       }
-    } else {
-      const recentlyVerified = hasRecentlyVerifiedOtp(normalizedEmail, 'FACULTY_REGISTRATION');
-      if (!recentlyVerified) {
-        return res.status(400).json({ error: 'Email verification is required before application submission.' });
-      }
+      const issued = createVerificationGrant(normalizedEmail, 'FACULTY_REGISTRATION');
+      grantToValidate = issued.grantToken;
+    }
+
+    if (!grantToValidate) {
+      return res.status(400).json({ error: 'Email verification is required before application submission.' });
     }
 
     // Check duplicate email
@@ -58,19 +61,25 @@ facultyRouter.post('/applications', async (req: Request, res: Response) => {
     const now = new Date().toISOString();
 
     const applicationTx = db.transaction(() => {
-      // 1. Insert user with PENDING status and FACULTY role
+      // 1. Validate and consume the verification grant atomically
+      const grantResult = validateAndConsumeGrant(grantToValidate, normalizedEmail, 'FACULTY_REGISTRATION');
+      if (!grantResult.valid) {
+        throw new Error(grantResult.error || 'Invalid verification grant.');
+      }
+
+      // 2. Insert user with PENDING status and FACULTY role
       db.prepare(`
         INSERT INTO users (id, email, password_hash, role, status, is_email_verified, created_at, updated_at)
         VALUES (?, ?, ?, 'FACULTY', 'PENDING', 1, ?, ?)
       `).run(userId, normalizedEmail, passwordHash, now, now);
 
-      // 2. Insert application record
+      // 3. Insert application record
       db.prepare(`
         INSERT INTO faculty_applications (id, user_id, full_name, department, designation, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?)
       `).run(applicationId, userId, fullName.trim(), department.trim(), designation.trim(), now, now);
 
-      // 3. Insert initial profile
+      // 4. Insert initial profile
       db.prepare(`
         INSERT INTO faculty_profiles (id, user_id, full_name, department, designation, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -94,6 +103,9 @@ facultyRouter.post('/applications', async (req: Request, res: Response) => {
       message: 'Faculty application submitted successfully. Your credentials are saved, but login will only be enabled after administrator approval.',
     });
   } catch (err: any) {
+    if (err.message && (err.message.includes('verification') || err.message.includes('grant') || err.message.includes('Verification'))) {
+      return res.status(400).json({ error: err.message });
+    }
     return res.status(500).json({ error: err.message || 'Error submitting faculty application.' });
   }
 });

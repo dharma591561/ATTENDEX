@@ -1,7 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { GraduationCap, Mail, Lock, User, Hash, CheckCircle2, AlertCircle, ArrowRight, Clock } from 'lucide-react';
+import {
+  GraduationCap,
+  Mail,
+  Lock,
+  User,
+  Hash,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight,
+  Clock,
+  Camera,
+  Trash2,
+  ShieldCheck,
+  Building,
+  Layers,
+} from 'lucide-react';
 
 interface StudentRegisterPageProps {
   onNavigate: (view: string) => void;
@@ -9,6 +24,7 @@ interface StudentRegisterPageProps {
 
 export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavigate }) => {
   const { setUser } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form State
   const [fullName, setFullName] = useState('');
@@ -19,10 +35,15 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // OTP State
+  // Profile Photo (Optional)
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  // OTP & Verification Grant State
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [otpVerified, setOtpVerified] = useState(false);
+  const [verificationGrant, setVerificationGrant] = useState<string | null>(null);
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -31,6 +52,9 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Confirmation state
+  const [registeredStudent, setRegisteredStudent] = useState<any | null>(null);
 
   // Cooldown timer effect
   useEffect(() => {
@@ -62,6 +86,39 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
   };
 
   const rollValidation = getRollNumberValidation(rollNumber);
+
+  // Handle Photo File Pick
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Profile photo must be JPEG, PNG, or WebP format.');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Profile photo must be less than 2MB.');
+      return;
+    }
+
+    setError(null);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setProfilePhoto(dataUrl);
+      setPhotoPreview(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = () => {
+    setProfilePhoto(null);
+    setPhotoPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   // Send OTP
   const handleSendOtp = async () => {
@@ -105,6 +162,9 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
     try {
       const res = await api.auth.verifyOtp(email.trim().toLowerCase(), otp.trim(), 'STUDENT_REGISTRATION');
       setOtpVerified(true);
+      if (res.verificationGrant) {
+        setVerificationGrant(res.verificationGrant);
+      }
       setSuccessMsg(res.message || 'Email successfully verified!');
     } catch (err: any) {
       setError(err.message || 'Invalid or expired verification code.');
@@ -120,7 +180,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
     setSuccessMsg(null);
 
     if (!fullName.trim() || !rollNumber.trim() || !branch || !section || !email.trim() || !password || !confirmPassword) {
-      setError('All fields are required.');
+      setError('All required fields must be completed.');
       return;
     }
 
@@ -139,7 +199,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
       return;
     }
 
-    if (!otpVerified) {
+    if (!otpVerified || !verificationGrant) {
       setError('You must verify your university email before completing registration.');
       return;
     }
@@ -155,17 +215,92 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
         email: email.trim().toLowerCase(),
         password,
         confirmPassword,
-        otp: otp.trim(),
+        verificationGrant,
+        profilePhoto: profilePhoto || undefined,
       });
 
       setUser(res.user);
-      onNavigate('student-dashboard');
+      setRegisteredStudent(res.user);
     } catch (err: any) {
       setError(err.message || 'Registration failed.');
     } finally {
       setSubmitting(false);
     }
   };
+
+  // If student was just registered, render the Confirmation View
+  if (registeredStudent) {
+    const profile = registeredStudent.student_profile;
+    return (
+      <div className="min-h-[calc(100vh-4rem)] bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+        <div className="max-w-md w-full bg-white rounded-xl border border-slate-200 p-8 shadow-xs text-center">
+          <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-600">
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">Registration Confirmed</h2>
+          <p className="text-xs text-slate-500 mt-1 mb-6">
+            Your ATTENDX student identity has been successfully registered and verified.
+          </p>
+
+          {/* Academic ID Card Preview */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 text-left mb-6">
+            <div className="flex items-center gap-4 mb-4 pb-4 border-b border-slate-200">
+              <div className="w-16 h-16 rounded-lg bg-slate-900 text-white flex items-center justify-center overflow-hidden shrink-0 border border-slate-300">
+                {profile?.profile_photo_url || photoPreview ? (
+                  <img
+                    src={profile?.profile_photo_url || photoPreview!}
+                    alt={profile?.full_name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <GraduationCap className="w-8 h-8 text-white" />
+                )}
+              </div>
+              <div className="overflow-hidden">
+                <h3 className="font-bold text-sm text-slate-900 truncate">{profile?.full_name}</h3>
+                <p className="font-mono text-xs font-semibold text-slate-700">{profile?.roll_number}</p>
+                <div className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-sm border border-emerald-200">
+                  <ShieldCheck className="w-3 h-3" />
+                  <span>Active Student</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <span className="text-slate-400 block text-[11px]">Branch & Section</span>
+                <span className="font-semibold text-slate-800">{profile?.branch} — Sec {profile?.section}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">Email</span>
+                <span className="font-medium text-slate-700 truncate block">{registeredStudent.email}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => onNavigate('student-dashboard')}
+              className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span>Proceed to Student Dashboard</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('login')}
+              className="w-full py-2.5 px-4 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+            >
+              Go to Login Portal
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -196,9 +331,9 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* 1. Full Name */}
+          {/* 1. Full Legal Name */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Full Legal Name</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Full Legal Name *</label>
             <div className="relative">
               <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
               <input
@@ -206,7 +341,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="e.g. John Doe"
+                placeholder="e.g. Rahul Sharma"
                 className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
               />
             </div>
@@ -215,7 +350,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
           {/* 2. Roll Number & Academic Branch & Section */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="sm:col-span-1">
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Roll Number</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Roll Number *</label>
               <div className="relative">
                 <Hash className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
                 <input
@@ -242,32 +377,38 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Branch</label>
-              <select
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
-              >
-                <option value="CSE">CSE (Computer Science)</option>
-                <option value="ECE">ECE (Electronics)</option>
-                <option value="MECH">MECH (Mechanical)</option>
-                <option value="CIVIL">CIVIL (Civil)</option>
-                <option value="IT">IT (Information Tech)</option>
-              </select>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Branch *</label>
+              <div className="relative">
+                <Building className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                <select
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                >
+                  <option value="CSE">CSE (Computer Science)</option>
+                  <option value="ECE">ECE (Electronics)</option>
+                  <option value="MECH">MECH (Mechanical)</option>
+                  <option value="CIVIL">CIVIL (Civil)</option>
+                  <option value="IT">IT (Information Tech)</option>
+                </select>
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Section</label>
-              <select
-                value={section}
-                onChange={(e) => setSection(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
-              >
-                <option value="A">Section A</option>
-                <option value="B">Section B</option>
-                <option value="C">Section C</option>
-                <option value="D">Section D</option>
-              </select>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Section *</label>
+              <div className="relative">
+                <Layers className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                <select
+                  value={section}
+                  onChange={(e) => setSection(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                >
+                  <option value="A">Section A</option>
+                  <option value="B">Section B</option>
+                  <option value="C">Section C</option>
+                  <option value="D">Section D</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -275,7 +416,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-slate-700">University Email Address</label>
+                <label className="text-xs font-semibold text-slate-700">University Email Address *</label>
                 {otpVerified && (
                   <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Verified
@@ -323,7 +464,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
             {otpSent && !otpVerified && (
               <div className="pt-2 border-t border-slate-200">
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Enter 6-Digit Email Verification Code
+                  Enter 6-Digit Email Verification Code *
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -344,7 +485,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Valid for 5 minutes. If SMTP is not yet configured, check terminal logs or contact the administrator.
+                  Valid for 5 minutes. The verification code is delivered to your email inbox via SMTP.
                 </p>
               </div>
             )}
@@ -353,7 +494,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
           {/* 4. Password & Confirm Password */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Create Password</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Create Password *</label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
                 <input
@@ -368,7 +509,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Confirm Password</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Confirm Password *</label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
                 <input
@@ -379,6 +520,51 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
                   placeholder="Re-type password"
                   className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* 5. Optional Profile Photo */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-slate-700">Profile Photograph (Optional)</label>
+              <span className="text-[11px] text-slate-400">JPEG, PNG, WebP (Max 2MB)</span>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-lg bg-white border border-slate-300 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                {photoPreview ? (
+                  <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                ) : (
+                  <Camera className="w-6 h-6 text-slate-400" />
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handlePhotoSelect}
+                  className="hidden"
+                  id="student-photo-upload"
+                />
+                <label
+                  htmlFor="student-photo-upload"
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 cursor-pointer shadow-xs transition-colors"
+                >
+                  {photoPreview ? 'Change Photo' : 'Choose Photo'}
+                </label>
+                {photoPreview && (
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="p-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                    title="Remove selected photo"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           </div>

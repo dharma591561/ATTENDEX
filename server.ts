@@ -1,4 +1,5 @@
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import cookieParser from 'cookie-parser';
@@ -13,6 +14,7 @@ import { adminRouter } from './server/routes/adminRoutes';
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -60,11 +62,16 @@ app.get('/api/health', (_req, res) => {
 });
 
 async function startServer() {
+  const httpServer = http.createServer(app);
+
   if (!isProd) {
     // Development mode: Mount Vite middleware
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -77,7 +84,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`[ATTENDX Server] Running at http://localhost:${PORT} in ${isProd ? 'production' : 'development'} mode.`);
   });
 }

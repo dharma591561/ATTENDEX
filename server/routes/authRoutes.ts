@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../db/database';
 import { hashPassword, verifyPassword, createSession, invalidateSession, invalidateAllUserSessions, getSessionUser } from '../services/authService';
-import { generateAndStoreOtp, verifyOtp, hasRecentlyVerifiedOtp } from '../services/otpService';
+import { generateAndStoreOtp, verifyOtp, hasRecentlyVerifiedOtp, createVerificationGrant } from '../services/otpService';
 import { sendOtpEmail, isSmtpConfigured, verifySmtpConnection } from '../services/emailService';
 import { logAuditEvent } from '../services/auditService';
 
@@ -107,9 +107,14 @@ authRouter.post('/verify-otp', (req: Request, res: Response) => {
       return res.status(400).json({ error: result.error });
     }
 
+    // Issue short-lived, single-use verification grant bound to email and purpose
+    const grant = createVerificationGrant(normalizedEmail, purpose);
+
     return res.json({
       success: true,
       message: 'Email verified successfully.',
+      verificationGrant: grant.grantToken,
+      expiresAt: grant.expiresAt,
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Error verifying OTP.' });
@@ -132,6 +137,22 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     `).get(normalizedEmail) as any;
 
     if (!user) {
+      if (expectedRole === 'FOUNDER') {
+        const founderCount = (db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'FOUNDER'").get() as any).count;
+        if (founderCount === 0) {
+          return res.status(404).json({
+            error: 'No founder account has been initialized yet. Please initialize the founder account first via server terminal: npm run init-founder',
+          });
+        }
+      } else if (expectedRole === 'STUDENT') {
+        return res.status(401).json({
+          error: 'No student account found with this email. If you have not registered yet, please complete student registration.',
+        });
+      } else if (expectedRole === 'FACULTY') {
+        return res.status(401).json({
+          error: 'No faculty account found with this email. If you have not applied yet, please submit a faculty application.',
+        });
+      }
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
@@ -177,11 +198,12 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     const userAgent = req.headers['user-agent'];
     const sessionId = createSession(user.id, ip, userAgent);
 
-    // Set HTTP-only Cookie
+    // Set HTTP-only Cookie with iframe & HTTPS proxy compatibility
+    const isHttps = process.env.NODE_ENV === 'production' || req.secure || req.headers['x-forwarded-proto'] === 'https';
     res.cookie('attendx_session', sessionId, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isHttps,
+      sameSite: isHttps ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 

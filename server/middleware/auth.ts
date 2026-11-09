@@ -83,7 +83,9 @@ export function requireRole(allowedRoles: Array<'STUDENT' | 'FACULTY' | 'FOUNDER
 }
 
 /**
- * Basic CSRF / Origin validation for state-changing browser requests
+ * Robust CSRF / Origin validation for state-changing browser requests.
+ * Uses defense-in-depth: custom header validation (OWASP recommended)
+ * plus origin/host verification supporting reverse proxies (X-Forwarded-Host).
  */
 export function csrfProtection(req: Request, res: Response, next: NextFunction) {
   const safeMethods = ['GET', 'HEAD', 'OPTIONS'];
@@ -91,20 +93,53 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
     return next();
   }
 
-  // Check header or origin
-  const origin = req.headers.origin || req.headers.referer;
-  const host = req.headers.host;
+  // 1. Check for custom client header (browsers block cross-site forms from attaching custom headers)
+  const customHeader = req.headers['x-attendx-client'] || req.headers['x-requested-with'];
+  if (customHeader === 'web' || customHeader === 'XMLHttpRequest') {
+    return next();
+  }
 
-  // In local or API proxy environments, ensure origin matches host if origin is present
-  if (origin && host) {
-    try {
-      const url = new URL(origin);
-      if (url.host !== host && !origin.includes(host)) {
-        return res.status(403).json({ error: 'Cross-site request blocked.' });
-      }
-    } catch {
-      // Invalid URL in origin
+  // 2. Validate Origin / Referer header against authorized hosts
+  const origin = (req.headers.origin || req.headers.referer) as string | undefined;
+  if (!origin) {
+    // Non-browser / same-origin direct requests without origin header
+    return next();
+  }
+
+  try {
+    const originUrl = new URL(origin);
+    const originHost = originUrl.host.toLowerCase();
+
+    // Compile list of permitted hosts
+    const allowedHosts = new Set<string>();
+
+    if (req.headers.host) {
+      allowedHosts.add(req.headers.host.toLowerCase());
     }
+    const forwardedHost = req.headers['x-forwarded-host'] as string | undefined;
+    if (forwardedHost) {
+      allowedHosts.add(forwardedHost.toLowerCase());
+    }
+    if (process.env.APP_URL) {
+      try {
+        allowedHosts.add(new URL(process.env.APP_URL).host.toLowerCase());
+      } catch {}
+    }
+
+    // Local development addresses
+    allowedHosts.add('localhost:3000');
+    allowedHosts.add('127.0.0.1:3000');
+    allowedHosts.add('localhost');
+    allowedHosts.add('127.0.0.1');
+
+    // Cloud Run and Google AI Studio preview domains
+    const isCloudRunOrigin = originHost.endsWith('.run.app') || originHost.endsWith('.aistudio.google.com');
+
+    if (!allowedHosts.has(originHost) && !isCloudRunOrigin) {
+      return res.status(403).json({ error: 'Cross-site request blocked.' });
+    }
+  } catch {
+    return res.status(403).json({ error: 'Invalid request origin header.' });
   }
 
   next();

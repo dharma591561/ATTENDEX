@@ -141,6 +141,21 @@ export function initDatabase() {
     );
     CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
   `);
+
+  // 9. Email Verification Grants (issued upon OTP verification, consumed atomically at registration)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS email_verification_grants (
+      id TEXT PRIMARY KEY,
+      token_hash TEXT UNIQUE NOT NULL,
+      email TEXT NOT NULL COLLATE NOCASE,
+      purpose TEXT NOT NULL CHECK(purpose IN ('STUDENT_REGISTRATION', 'FACULTY_REGISTRATION', 'PASSWORD_RESET')),
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      consumed_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_grants_email_purpose ON email_verification_grants(email, purpose);
+    CREATE INDEX IF NOT EXISTS idx_grants_token_hash ON email_verification_grants(token_hash);
+  `);
 }
 
 // Clean up expired sessions periodically

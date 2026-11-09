@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { validateRollNumber, generateAndStoreOtp, verifyOtp } from '../../server/services/otpService';
+import { validateRollNumber, generateAndStoreOtp, verifyOtp, createVerificationGrant, validateAndConsumeGrant } from '../../server/services/otpService';
 import { hashPassword, verifyPassword, createSession, getSessionUser } from '../../server/services/authService';
 import { initializeFounder } from '../../scripts/init-founder';
 import { db, initDatabase } from '../../server/db/database';
@@ -96,13 +96,11 @@ test('4. Password Hashing & Verification: uses bcrypt with minimum 8 chars', asy
 });
 
 test('5. Single Founder Invariant: CLI initialization and refusal of duplicate founder', async () => {
-  // Check if a founder already exists, or create test founder
-  const existing = db.prepare("SELECT id FROM users WHERE role = 'FOUNDER'").get();
+  // Ensure clean state before test
+  db.prepare("DELETE FROM users WHERE role = 'FOUNDER'").run();
   
-  if (!existing) {
-    const initRes = await initializeFounder('founder@attendx.internal', 'FounderSecretPassword2026!');
-    assert.equal(initRes.success, true);
-  }
+  const initRes = await initializeFounder('test_founder@attendx.internal', 'FounderSecretPassword2026!');
+  assert.equal(initRes.success, true);
 
   // Attempting to create a second founder MUST be rejected
   const secondAttempt = await initializeFounder('secondfounder@attendx.internal', 'AnotherPassword2026!');
@@ -119,7 +117,7 @@ test('5. Single Founder Invariant: CLI initialization and refusal of duplicate f
 });
 
 test('6. Session & Cookie Authentication: generates 64-char token and hydrates user', () => {
-  // Find founder user
+  // Find test founder user
   const founder = db.prepare("SELECT id, email, role FROM users WHERE role = 'FOUNDER'").get() as any;
   assert.ok(founder);
 
@@ -131,6 +129,11 @@ test('6. Session & Cookie Authentication: generates 64-char token and hydrates u
   assert.ok(sessionUser);
   assert.equal(sessionUser.id, founder.id);
   assert.equal(sessionUser.role, 'FOUNDER');
+
+  // Clean up test founder and its sessions/audit logs so DB is left clean for developer initialization
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(founder.id);
+  db.prepare('DELETE FROM audit_logs WHERE actor_user_id = ? OR target_user_id = ?').run(founder.id, founder.id);
+  db.prepare('DELETE FROM users WHERE id = ?').run(founder.id);
 });
 
 test('7. Database Uniqueness & Relational Constraints: Duplicate roll numbers are rejected', () => {
@@ -171,4 +174,255 @@ test('7. Database Uniqueness & Relational Constraints: Duplicate roll numbers ar
   // Clean up
   db.prepare('DELETE FROM student_profiles WHERE roll_number = ?').run(testRoll);
   db.prepare('DELETE FROM users WHERE email IN (?, ?)').run(testEmail1, testEmail2);
+});
+
+test('8. Verification Grant Lifecycle: OTP verified produces grant, grant cannot be reused', () => {
+  const testEmail = `grant_lifecycle_${Date.now()}@university.edu`;
+  const otpRes = generateAndStoreOtp(testEmail, 'STUDENT_REGISTRATION');
+  assert.equal(otpRes.success, true);
+
+  // 1. Verify OTP successfully
+  const verifyRes = verifyOtp(testEmail, otpRes.otp!, 'STUDENT_REGISTRATION');
+  assert.equal(verifyRes.valid, true);
+
+  // 2. Re-verifying the same OTP immediately fails (one-time-use preserved)
+  const reuseOtp = verifyOtp(testEmail, otpRes.otp!, 'STUDENT_REGISTRATION');
+  assert.equal(reuseOtp.valid, false);
+  assert.match(reuseOtp.error!, /already been used/);
+
+  // 3. Issue verification grant
+  const grant = createVerificationGrant(testEmail, 'STUDENT_REGISTRATION');
+  assert.ok(grant.grantToken);
+  assert.equal(grant.grantToken.length, 64);
+  assert.ok(grant.expiresAt > Date.now());
+
+  // 4. Validate and consume grant
+  const consumeRes = validateAndConsumeGrant(grant.grantToken, testEmail, 'STUDENT_REGISTRATION');
+  assert.equal(consumeRes.valid, true);
+
+  // 5. Reusing the consumed grant MUST fail
+  const reuseGrant = validateAndConsumeGrant(grant.grantToken, testEmail, 'STUDENT_REGISTRATION');
+  assert.equal(reuseGrant.valid, false);
+  assert.match(reuseGrant.error!, /already been used/);
+
+  // Clean up
+  db.prepare('DELETE FROM email_verification_grants WHERE email = ?').run(testEmail);
+  db.prepare('DELETE FROM email_verification_otps WHERE email = ?').run(testEmail);
+});
+
+test('9. Student Registration Flow: OTP -> Grant -> Atomic DB Insertion -> Single Grant Consumption', async () => {
+  const studentEmail = `student_e2e_${Date.now()}@university.edu`;
+  const rollNumber = '26UECSE0225';
+
+  // Ensure clean state
+  db.prepare('DELETE FROM student_profiles WHERE roll_number = ?').run(rollNumber);
+  db.prepare('DELETE FROM users WHERE email = ?').run(studentEmail);
+
+  // 1. Request and verify OTP
+  const otpRes = generateAndStoreOtp(studentEmail, 'STUDENT_REGISTRATION');
+  assert.equal(otpRes.success, true);
+  const verifyRes = verifyOtp(studentEmail, otpRes.otp!, 'STUDENT_REGISTRATION');
+  assert.equal(verifyRes.valid, true);
+
+  // 2. Issue grant
+  const grant = createVerificationGrant(studentEmail, 'STUDENT_REGISTRATION');
+  assert.ok(grant.grantToken);
+
+  // 3. Execute atomic registration transaction
+  const userId = `student-user-${Date.now()}`;
+  const profileId = `student-prof-${Date.now()}`;
+  const passwordHash = await hashPassword('StudentPassword123!');
+  const now = new Date().toISOString();
+
+  const tx = db.transaction(() => {
+    const grantCheck = validateAndConsumeGrant(grant.grantToken, studentEmail, 'STUDENT_REGISTRATION');
+    if (!grantCheck.valid) {
+      throw new Error(grantCheck.error);
+    }
+
+    db.prepare(`
+      INSERT INTO users (id, email, password_hash, role, status, is_email_verified, created_at, updated_at)
+      VALUES (?, ?, ?, 'STUDENT', 'ACTIVE', 1, ?, ?)
+    `).run(userId, studentEmail, passwordHash, now, now);
+
+    db.prepare(`
+      INSERT INTO student_profiles (id, user_id, full_name, roll_number, branch, section, created_at, updated_at)
+      VALUES (?, ?, 'Verified Student', ?, 'CSE', 'A', ?, ?)
+    `).run(profileId, userId, rollNumber, now, now);
+  });
+
+  tx();
+
+  // 4. Confirm database records created
+  const createdUser = db.prepare('SELECT id, role, status, is_email_verified FROM users WHERE id = ?').get(userId) as any;
+  assert.ok(createdUser);
+  assert.equal(createdUser.role, 'STUDENT');
+  assert.equal(createdUser.status, 'ACTIVE');
+  assert.equal(createdUser.is_email_verified, 1);
+
+  const createdProfile = db.prepare('SELECT roll_number, branch FROM student_profiles WHERE user_id = ?').get(userId) as any;
+  assert.ok(createdProfile);
+  assert.equal(createdProfile.roll_number, rollNumber);
+
+  // 5. Attempting to reuse the consumed grant fails
+  const reuseAttempt = validateAndConsumeGrant(grant.grantToken, studentEmail, 'STUDENT_REGISTRATION');
+  assert.equal(reuseAttempt.valid, false);
+
+  // Clean up
+  db.prepare('DELETE FROM student_profiles WHERE roll_number = ?').run(rollNumber);
+  db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  db.prepare('DELETE FROM email_verification_grants WHERE email = ?').run(studentEmail);
+  db.prepare('DELETE FROM email_verification_otps WHERE email = ?').run(studentEmail);
+});
+
+test('10. Faculty Application Flow: OTP -> Grant -> Atomic DB Insertion -> Single Grant Consumption', async () => {
+  const facultyEmail = `faculty_e2e_${Date.now()}@university.edu`;
+
+  db.prepare('DELETE FROM users WHERE email = ?').run(facultyEmail);
+
+  // 1. Request and verify OTP
+  const otpRes = generateAndStoreOtp(facultyEmail, 'FACULTY_REGISTRATION');
+  assert.equal(otpRes.success, true);
+  const verifyRes = verifyOtp(facultyEmail, otpRes.otp!, 'FACULTY_REGISTRATION');
+  assert.equal(verifyRes.valid, true);
+
+  // 2. Issue grant
+  const grant = createVerificationGrant(facultyEmail, 'FACULTY_REGISTRATION');
+  assert.ok(grant.grantToken);
+
+  // 3. Execute atomic faculty application transaction
+  const userId = `faculty-user-${Date.now()}`;
+  const appId = `faculty-app-${Date.now()}`;
+  const profileId = `faculty-prof-${Date.now()}`;
+  const passwordHash = await hashPassword('FacultyPassword123!');
+  const now = new Date().toISOString();
+
+  const tx = db.transaction(() => {
+    const grantCheck = validateAndConsumeGrant(grant.grantToken, facultyEmail, 'FACULTY_REGISTRATION');
+    if (!grantCheck.valid) {
+      throw new Error(grantCheck.error);
+    }
+
+    db.prepare(`
+      INSERT INTO users (id, email, password_hash, role, status, is_email_verified, created_at, updated_at)
+      VALUES (?, ?, ?, 'FACULTY', 'PENDING', 1, ?, ?)
+    `).run(userId, facultyEmail, passwordHash, now, now);
+
+    db.prepare(`
+      INSERT INTO faculty_applications (id, user_id, full_name, department, designation, status, created_at, updated_at)
+      VALUES (?, ?, 'Dr. Alan Turing', 'Computer Science', 'Professor', 'PENDING', ?, ?)
+    `).run(appId, userId, now, now);
+
+    db.prepare(`
+      INSERT INTO faculty_profiles (id, user_id, full_name, department, designation, created_at, updated_at)
+      VALUES (?, ?, 'Dr. Alan Turing', 'Computer Science', 'Professor', ?, ?)
+    `).run(profileId, userId, now, now);
+  });
+
+  tx();
+
+  // 4. Confirm database records created with PENDING status
+  const createdUser = db.prepare('SELECT id, role, status FROM users WHERE id = ?').get(userId) as any;
+  assert.ok(createdUser);
+  assert.equal(createdUser.role, 'FACULTY');
+  assert.equal(createdUser.status, 'PENDING');
+
+  const createdApp = db.prepare('SELECT status, department FROM faculty_applications WHERE id = ?').get(appId) as any;
+  assert.ok(createdApp);
+  assert.equal(createdApp.status, 'PENDING');
+
+  // 5. Attempting to reuse the consumed grant fails
+  const reuseAttempt = validateAndConsumeGrant(grant.grantToken, facultyEmail, 'FACULTY_REGISTRATION');
+  assert.equal(reuseAttempt.valid, false);
+
+  // Clean up
+  db.prepare('DELETE FROM faculty_applications WHERE id = ?').run(appId);
+  db.prepare('DELETE FROM faculty_profiles WHERE id = ?').run(profileId);
+  db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  db.prepare('DELETE FROM email_verification_grants WHERE email = ?').run(facultyEmail);
+  db.prepare('DELETE FROM email_verification_otps WHERE email = ?').run(facultyEmail);
+});
+
+test('11. Security Constraints: Rejects expired, cross-email, cross-purpose, or invalid grants', () => {
+  const emailA = `test_security_a_${Date.now()}@university.edu`;
+  const emailB = `test_security_b_${Date.now()}@university.edu`;
+
+  const grantA = createVerificationGrant(emailA, 'STUDENT_REGISTRATION');
+
+  // 1. Cross-email grant rejection
+  const crossEmail = validateAndConsumeGrant(grantA.grantToken, emailB, 'STUDENT_REGISTRATION');
+  assert.equal(crossEmail.valid, false);
+  assert.match(crossEmail.error!, /different email address/);
+
+  // 2. Cross-purpose grant rejection (Student grant used for Faculty)
+  const crossPurpose = validateAndConsumeGrant(grantA.grantToken, emailA, 'FACULTY_REGISTRATION');
+  assert.equal(crossPurpose.valid, false);
+  assert.match(crossPurpose.error!, /purpose mismatch/);
+
+  // 3. Expired grant rejection
+  db.prepare('UPDATE email_verification_grants SET expires_at = ? WHERE email = ?').run(Date.now() - 5000, emailA);
+  const expiredRes = validateAndConsumeGrant(grantA.grantToken, emailA, 'STUDENT_REGISTRATION');
+  assert.equal(expiredRes.valid, false);
+  assert.match(expiredRes.error!, /expired/);
+
+  // 4. Invalid / tampered token rejection
+  const invalidRes = validateAndConsumeGrant('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', emailA, 'STUDENT_REGISTRATION');
+  assert.equal(invalidRes.valid, false);
+  assert.match(invalidRes.error!, /Invalid verification grant/);
+
+  // Clean up
+  db.prepare('DELETE FROM email_verification_grants WHERE email IN (?, ?)').run(emailA, emailB);
+});
+
+test('12. Transaction Rollback Integrity: Failed registration preserves DB consistency without orphaned users', async () => {
+  const studentEmail = `rollback_${Date.now()}@university.edu`;
+  const existingRoll = '26UECSE0230';
+
+  // Seed one student with existingRoll
+  const existingUserId = `existing-u-${Date.now()}`;
+  db.prepare(`
+    INSERT INTO users (id, email, password_hash, role, status, is_email_verified, created_at, updated_at)
+    VALUES (?, 'existing_stud@university.edu', 'hash', 'STUDENT', 'ACTIVE', 1, 'now', 'now')
+  `).run(existingUserId);
+  db.prepare(`
+    INSERT INTO student_profiles (id, user_id, full_name, roll_number, branch, section, created_at, updated_at)
+    VALUES ('sp-exist', ?, 'Existing Student', ?, 'CSE', 'A', 'now', 'now')
+  `).run(existingUserId, existingRoll);
+
+  // Issue grant for new student
+  const grant = createVerificationGrant(studentEmail, 'STUDENT_REGISTRATION');
+
+  const newUserId = `new-u-${Date.now()}`;
+  const now = new Date().toISOString();
+
+  // Attempt registration with duplicate existingRoll
+  assert.throws(() => {
+    db.transaction(() => {
+      validateAndConsumeGrant(grant.grantToken, studentEmail, 'STUDENT_REGISTRATION');
+
+      db.prepare(`
+        INSERT INTO users (id, email, password_hash, role, status, is_email_verified, created_at, updated_at)
+        VALUES (?, ?, 'hash', 'STUDENT', 'ACTIVE', 1, ?, ?)
+      `).run(newUserId, studentEmail, now, now);
+
+      // This will throw UNIQUE constraint on roll_number
+      db.prepare(`
+        INSERT INTO student_profiles (id, user_id, full_name, roll_number, branch, section, created_at, updated_at)
+        VALUES ('sp-new', ?, 'New Student', ?, 'CSE', 'B', ?, ?)
+      `).run(newUserId, existingRoll, now, now);
+    })();
+  }, /UNIQUE constraint failed/);
+
+  // Verify that newUserId was rolled back and does NOT exist in users table
+  const orphanedUser = db.prepare('SELECT id FROM users WHERE id = ?').get(newUserId);
+  assert.equal(orphanedUser, undefined);
+
+  // Verify that grant consumption was also rolled back
+  const grantRecord = db.prepare('SELECT consumed_at FROM email_verification_grants WHERE email = ?').get(studentEmail) as any;
+  assert.equal(grantRecord.consumed_at, null);
+
+  // Clean up
+  db.prepare('DELETE FROM student_profiles WHERE roll_number = ?').run(existingRoll);
+  db.prepare('DELETE FROM users WHERE id IN (?, ?)').run(existingUserId, newUserId);
+  db.prepare('DELETE FROM email_verification_grants WHERE email = ?').run(studentEmail);
 });

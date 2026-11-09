@@ -19,6 +19,7 @@ export const FacultyApplyPage: React.FC<FacultyApplyPageProps> = ({ onNavigate }
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [otpVerified, setOtpVerified] = useState(false);
+  const [verificationGrant, setVerificationGrant] = useState<string | null>(null);
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -72,8 +73,11 @@ export const FacultyApplyPage: React.FC<FacultyApplyPageProps> = ({ onNavigate }
 
     setVerifyingOtp(true);
     try {
-      await api.auth.verifyOtp(email.trim().toLowerCase(), otp.trim(), 'FACULTY_REGISTRATION');
+      const res = await api.auth.verifyOtp(email.trim().toLowerCase(), otp.trim(), 'FACULTY_REGISTRATION');
       setOtpVerified(true);
+      if (res.verificationGrant) {
+        setVerificationGrant(res.verificationGrant);
+      }
     } catch (err: any) {
       setError(err.message || 'Verification code is invalid or expired.');
     } finally {
@@ -101,7 +105,7 @@ export const FacultyApplyPage: React.FC<FacultyApplyPageProps> = ({ onNavigate }
       return;
     }
 
-    if (!otpVerified) {
+    if (!otpVerified || !verificationGrant) {
       setError('You must verify your email address before submitting the application.');
       return;
     }
@@ -116,7 +120,7 @@ export const FacultyApplyPage: React.FC<FacultyApplyPageProps> = ({ onNavigate }
         email: email.trim().toLowerCase(),
         password,
         confirmPassword,
-        otp: otp.trim(),
+        verificationGrant,
       });
 
       setSubmitted(true);

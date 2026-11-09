@@ -58,16 +58,12 @@ function MainRouter() {
       }
     }
 
-    // Role protection
-    if (view.startsWith('student-') && (!user || user.role !== 'STUDENT')) {
+    // Role protection - student registration and faculty application are public entry points
+    if (view.startsWith('student-') && view !== 'student-register' && (!user || user.role !== 'STUDENT')) {
       setCurrentView('login');
       return;
     }
-    if (view.startsWith('faculty-') && (!user || user.role !== 'FACULTY')) {
-      if (view === 'faculty-apply') {
-        setCurrentView('faculty-apply');
-        return;
-      }
+    if (view.startsWith('faculty-') && view !== 'faculty-apply' && (!user || user.role !== 'FACULTY')) {
       setCurrentView('login');
       return;
     }

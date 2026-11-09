@@ -2,6 +2,7 @@ import { User, StudentProfile, FacultyProfile, FacultyApplication, AdminStats, A
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
+  headers.set('X-Attendx-Client', 'web');
   if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
@@ -46,7 +47,7 @@ export const api = {
         body: JSON.stringify({ email, purpose }),
       }),
     verifyOtp: (email: string, otp: string, purpose: 'STUDENT_REGISTRATION' | 'FACULTY_REGISTRATION' | 'PASSWORD_RESET') =>
-      request<{ success: boolean; message: string }>('/api/auth/verify-otp', {
+      request<{ success: boolean; message: string; verificationGrant?: string; expiresAt?: number }>('/api/auth/verify-otp', {
         method: 'POST',
         body: JSON.stringify({ email, otp, purpose }),
       }),
