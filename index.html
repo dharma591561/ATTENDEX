@@ -4,19 +4,52 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
-      // Ignore WebSocket / HMR connection errors per AI Studio environment constraints
-      window.addEventListener('unhandledrejection', function(event) {
-        var msg = String(event.reason && (event.reason.message || event.reason) || '');
-        if (msg.includes('WebSocket') || msg.includes('closed without opened')) {
-          event.preventDefault();
+      (function() {
+        // AI Studio Environment Constraint: HMR is disabled.
+        // Intercept Vite HMR WebSocket to eliminate "WebSocket closed without opened" errors on Cloud Run.
+        if (typeof window !== 'undefined' && window.WebSocket) {
+          var RealWS = window.WebSocket;
+          function ViteHmrSafeWebSocket(url, protocols) {
+            var isHmr = protocols === 'vite-hmr' || 
+              (Array.isArray(protocols) && protocols.indexOf('vite-hmr') !== -1) ||
+              (typeof url === 'string' && (url.indexOf('token=') !== -1 || url.indexOf('vite-hmr') !== -1));
+            
+            if (isHmr) {
+              var emitter = new EventTarget();
+              emitter.readyState = 1; // WebSocket.OPEN
+              emitter.url = String(url);
+              emitter.protocol = 'vite-hmr';
+              emitter.send = function() {};
+              emitter.close = function() {
+                emitter.readyState = 3;
+              };
+              setTimeout(function() {
+                emitter.dispatchEvent(new Event('open'));
+              }, 0);
+              return emitter;
+            }
+            return new RealWS(url, protocols);
+          }
+          ViteHmrSafeWebSocket.CONNECTING = 0;
+          ViteHmrSafeWebSocket.OPEN = 1;
+          ViteHmrSafeWebSocket.CLOSING = 2;
+          ViteHmrSafeWebSocket.CLOSED = 3;
+          ViteHmrSafeWebSocket.prototype = RealWS.prototype;
+          window.WebSocket = ViteHmrSafeWebSocket;
         }
-      });
-      window.addEventListener('error', function(event) {
-        var msg = String(event.message || '');
-        if (msg.includes('WebSocket') || msg.includes('closed without opened')) {
-          event.preventDefault();
+
+        // Suppress any residual HMR/WebSocket rejection events
+        function suppressHmr(e) {
+          var msg = String((e && (e.message || (e.reason && (e.reason.message || e.reason)))) || '');
+          if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('closed without opened') !== -1 || msg.indexOf('@vite/client') !== -1) {
+            if (e.preventDefault) e.preventDefault();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            return true;
+          }
         }
-      });
+        window.addEventListener('unhandledrejection', suppressHmr, true);
+        window.addEventListener('error', suppressHmr, true);
+      })();
     </script>
     <title>ATTENDX — College Portal</title>
     <meta name="description" content="Official college attendance and student management platform for students, faculty, and administrators." />
