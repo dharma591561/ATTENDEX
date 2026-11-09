@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { GraduationCap, BookOpen, ShieldCheck, Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react';
+import { User } from '../types';
 
 interface LoginPageProps {
-  onNavigate: (view: string) => void;
+  onNavigate: (view: string, currentUser?: User | null) => void;
   defaultRole?: 'STUDENT' | 'FACULTY' | 'FOUNDER';
 }
 
@@ -35,11 +36,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, defaultRole = 
 
       // Route to appropriate dashboard
       if (user.role === 'STUDENT') {
-        onNavigate('student-dashboard');
+        onNavigate('student-dashboard', user);
       } else if (user.role === 'FACULTY') {
-        onNavigate('faculty-dashboard');
+        onNavigate('faculty-dashboard', user);
       } else if (user.role === 'FOUNDER') {
-        onNavigate('admin-dashboard');
+        onNavigate('admin-dashboard', user);
       }
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');

@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "start": "tsx server.ts",
     "init-founder": "tsx scripts/init-founder.ts",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "DATABASE_PATH=./data/test_attendx.db tsx --test src/**/*.test.ts",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },

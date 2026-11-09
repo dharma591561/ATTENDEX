@@ -10,19 +10,47 @@ declare global {
   }
 }
 
+export function setSessionCookie(res: Response, req: Request, sessionId: string) {
+  const isHttps = process.env.NODE_ENV === 'production' || 
+                  req.secure || 
+                  req.headers['x-forwarded-proto'] === 'https' ||
+                  Boolean(process.env.APP_URL?.startsWith('https://'));
+
+  res.cookie('attendx_session', sessionId, {
+    httpOnly: true,
+    secure: isHttps,
+    sameSite: isHttps ? 'none' : 'lax',
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+}
+
+export function clearSessionCookie(res: Response) {
+  res.clearCookie('attendx_session', {
+    httpOnly: true,
+    path: '/',
+  });
+}
+
 export function sessionMiddleware(req: Request, _res: Response, next: NextFunction) {
   let sessionId = req.cookies?.attendx_session;
+  let user = sessionId ? getSessionUser(sessionId) : null;
 
-  if (!sessionId && req.headers.authorization?.startsWith('Bearer ')) {
-    sessionId = req.headers.authorization.slice(7).trim();
+  // Fallback to Bearer token in Authorization header (essential for cross-origin or third-party iframe cookie restrictions)
+  if (!user && req.headers.authorization?.startsWith('Bearer ')) {
+    const bearerToken = req.headers.authorization.slice(7).trim();
+    if (bearerToken) {
+      const bearerUser = getSessionUser(bearerToken);
+      if (bearerUser) {
+        user = bearerUser;
+        sessionId = bearerToken;
+      }
+    }
   }
 
-  if (sessionId) {
-    const user = getSessionUser(sessionId);
-    if (user) {
-      req.user = user;
-      req.sessionId = sessionId;
-    }
+  if (user && sessionId) {
+    req.user = user;
+    req.sessionId = sessionId;
   }
 
   next();
