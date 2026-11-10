@@ -1,7 +1,7 @@
-# ATTENDX — Complete Full-Stack College Portal
+# CLASSYNC — Complete Full-Stack College Portal
 ## Master Engineering Documentation — Phase 1
 
-ATTENDX is a production-grade academic attendance and student management platform featuring strict role-based access control (RBAC), relational database persistence, verified academic roll number mapping, faculty application review, and private super administrator initialization.
+CLASSYNC is a production-grade academic attendance and student management platform featuring strict role-based access control (RBAC), relational database persistence, verified academic roll number mapping, faculty application review, and private super administrator initialization.
 
 ---
 
@@ -120,12 +120,12 @@ npx tsx -e "import { initDatabase } from './server/db/database'; initDatabase();
 
 ### 7. SMTP Configuration (Real Email OTP Delivery)
 
-ATTENDX sends real 6-digit numeric OTP verification emails using Nodemailer.
+CLASSYNC sends real 6-digit numeric OTP verification emails using Nodemailer.
 
 #### Step-by-step Gmail SMTP Setup:
 1. Log into your Google Account and visit [Google 2-Step Verification](https://myaccount.google.com/signinoptions/two-step-verification). Ensure it is turned ON.
 2. Go to [Google App Passwords](https://myaccount.google.com/apppasswords).
-3. Under "App name", type `ATTENDX` and click **Create**.
+3. Under "App name", type `CLASSYNC` and click **Create**.
 4. Copy the generated **16-character password** (e.g., `abcd efgh ijkl mnop`).
 5. Open your `.env` file and configure:
 
@@ -135,7 +135,7 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=your_email@gmail.com
 SMTP_PASS=your_16_character_app_password
-SMTP_FROM="ATTENDX College Portal <noreply@attendx.edu>"
+SMTP_FROM="CLASSYNC College Portal <noreply@classync.edu>"
 ```
 
 *Note: Never use your regular Gmail personal password. Google requires an App Password.*
@@ -155,13 +155,13 @@ cp .env.example .env
 | `PORT` | Local server port | `3000` |
 | `NODE_ENV` | Environment mode (`development` / `production`) | `development` |
 | `DATABASE_PATH` | Path to persistent SQLite database file | `./data/attendx.db` |
-| `SESSION_SECRET` | Cryptographic secret for hashing internal tokens | `attendx_super_secure_random_session_secret` |
+| `SESSION_SECRET` | Cryptographic secret for hashing internal tokens | `classync_super_secure_random_session_secret` |
 | `SMTP_HOST` | SMTP server host (e.g. `smtp.gmail.com`) | Required for live email |
 | `SMTP_PORT` | SMTP port (`587` for STARTTLS, `465` for SSL) | `587` |
 | `SMTP_SECURE` | Boolean flag for SSL port 465 | `false` |
 | `SMTP_USER` | SMTP username/email address | Required for live email |
 | `SMTP_PASS` | SMTP password or 16-char Google App Password | Required for live email |
-| `SMTP_FROM` | Sender display name and address | `"ATTENDX College Portal <noreply@attendx.edu>"` |
+| `SMTP_FROM` | Sender display name and address | `"CLASSYNC College Portal <noreply@classync.edu>"` |
 
 ---
 

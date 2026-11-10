@@ -35,7 +35,7 @@ function MainRouter() {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
         <div className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-xs font-semibold text-slate-700 tracking-wide uppercase">Connecting to ATTENDX Portal...</p>
+        <p className="text-xs font-semibold text-slate-700 tracking-wide uppercase">Connecting to CLASSYNC Portal...</p>
       </div>
     );
   }

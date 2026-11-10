@@ -10,7 +10,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-800">ATTENDX</span>
+            <span className="font-semibold text-slate-800">CLASSYNC</span>
             <span>·</span>
             <span>College Attendance & Student Management Platform</span>
           </div>

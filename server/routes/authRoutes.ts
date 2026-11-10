@@ -4,6 +4,7 @@ import { hashPassword, verifyPassword, createSession, invalidateSession, invalid
 import { generateAndStoreOtp, verifyOtp, hasRecentlyVerifiedOtp, createVerificationGrant } from '../services/otpService';
 import { sendOtpEmail, isSmtpConfigured, verifySmtpConnection } from '../services/emailService';
 import { logAuditEvent } from '../services/auditService';
+import { setSessionCookie, clearSessionCookie } from '../middleware/auth';
 
 export const authRouter = Router();
 
@@ -198,14 +199,8 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     const userAgent = req.headers['user-agent'];
     const sessionId = createSession(user.id, ip, userAgent);
 
-    // Set HTTP-only Cookie with iframe & HTTPS proxy compatibility
-    const isHttps = process.env.NODE_ENV === 'production' || req.secure || req.headers['x-forwarded-proto'] === 'https';
-    res.cookie('attendx_session', sessionId, {
-      httpOnly: true,
-      secure: isHttps,
-      sameSite: isHttps ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    // Set HTTP-only Cookie with full site scope (path: '/'), SameSite, and HTTPS detection
+    setSessionCookie(res, req, sessionId);
 
     // Audit log founder login
     if (user.role === 'FOUNDER') {
@@ -235,23 +230,13 @@ authRouter.post('/logout', (req: Request, res: Response) => {
   if (req.sessionId) {
     invalidateSession(req.sessionId);
   }
-  res.clearCookie('attendx_session');
+  clearSessionCookie(res);
   return res.json({ success: true, message: 'Logged out successfully.' });
 });
 
 // Current User Profile / Session Check
 authRouter.get('/me', (req: Request, res: Response) => {
-  let sessionId = req.cookies?.attendx_session;
-  if (!sessionId && req.headers.authorization?.startsWith('Bearer ')) {
-    sessionId = req.headers.authorization.slice(7).trim();
-  }
-
-  if (!sessionId) {
-    return res.json({ user: null });
-  }
-
-  const user = getSessionUser(sessionId);
-  return res.json({ user: user || null });
+  return res.json({ user: req.user || null });
 });
 
 // Reset Password with OTP

@@ -26,7 +26,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
           <div className="w-9 h-9 rounded-lg bg-slate-900 flex items-center justify-center text-white font-bold shadow-xs">
             <GraduationCap className="w-5 h-5" />
           </div>
-          <span className="text-xl font-bold tracking-tight text-slate-900">ATTENDX</span>
+          <span className="text-xl font-bold tracking-tight text-slate-900">CLASSYNC</span>
         </button>
 
         {/* Zone 2: Navigation Links (1-2 word labels, single-line, clean typography) */}

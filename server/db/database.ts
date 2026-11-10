@@ -12,8 +12,15 @@ if (!fs.existsSync(dbDir)) {
 
 export const db = new Database(dbPath);
 
-// Enable WAL mode for better concurrency and performance
-db.pragma('journal_mode = WAL');
+// Checkpoint any existing WAL frames into the main database file and use DELETE journal mode
+// with FULL synchronous durability so every transaction is immediately committed to ./data/attendx.db on disk.
+try {
+  db.pragma('wal_checkpoint(TRUNCATE)');
+} catch {
+  // Ignore if not in WAL mode
+}
+db.pragma('journal_mode = DELETE');
+db.pragma('synchronous = FULL');
 db.pragma('foreign_keys = ON');
 
 export function initDatabase() {

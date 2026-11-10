@@ -6,6 +6,7 @@ import fs from 'fs';
 import { validateRollNumber, generateAndStoreOtp, verifyOtp, createVerificationGrant, validateAndConsumeGrant } from '../../server/services/otpService';
 import { hashPassword, verifyPassword, createSession, getSessionUser } from '../../server/services/authService';
 import { initializeFounder } from '../../scripts/init-founder';
+import { sessionMiddleware, setSessionCookie, requireAuth, requireRole } from '../../server/middleware/auth';
 import { db, initDatabase } from '../../server/db/database';
 
 // Ensure DB is initialized
@@ -423,4 +424,88 @@ test('12. Transaction Rollback Integrity: Failed registration preserves DB consi
   db.prepare('DELETE FROM student_profiles WHERE roll_number = ?').run(existingRoll);
   db.prepare('DELETE FROM users WHERE id IN (?, ?)').run(existingUserId, newUserId);
   db.prepare('DELETE FROM email_verification_grants WHERE email = ?').run(studentEmail);
+});
+
+test('13. Founder Dashboard Authentication & Authorization: Cookie Path, Bearer Fallback, and Role Protection', () => {
+  // 1. Verify setSessionCookie sets root path '/' and httpOnly
+  let cookieName = '';
+  let cookieVal = '';
+  let cookieOpts: any = null;
+  const mockRes: any = {
+    cookie: (name: string, val: string, opts: any) => {
+      cookieName = name;
+      cookieVal = val;
+      cookieOpts = opts;
+    },
+  };
+  const mockReq: any = { secure: true, headers: { 'x-forwarded-proto': 'https' } };
+  setSessionCookie(mockRes, mockReq, 'test-session-xyz');
+
+  assert.equal(cookieName, 'attendx_session');
+  assert.equal(cookieVal, 'test-session-xyz');
+  assert.equal(cookieOpts.path, '/');
+  assert.equal(cookieOpts.httpOnly, true);
+  assert.equal(cookieOpts.secure, true);
+  assert.equal(cookieOpts.sameSite, 'none');
+
+  // 2. Hydrate founder session
+  const founder = db.prepare("SELECT id, email, role FROM users WHERE role = 'FOUNDER'").get() as any;
+  assert.ok(founder, 'Founder user must exist');
+
+  const testSessionId = createSession(founder.id, '127.0.0.1', 'Unit-Test-Client');
+
+  // 3. Test sessionMiddleware via Cookie
+  const reqWithCookie: any = { cookies: { attendx_session: testSessionId }, headers: {} };
+  let nextCalled = false;
+  sessionMiddleware(reqWithCookie, mockRes, () => { nextCalled = true; });
+  assert.equal(nextCalled, true);
+  assert.ok(reqWithCookie.user);
+  assert.equal(reqWithCookie.user.id, founder.id);
+  assert.equal(reqWithCookie.user.role, 'FOUNDER');
+
+  // 4. Test sessionMiddleware via Bearer header (cookie missing / iframe partitioned)
+  const reqWithBearer: any = { cookies: {}, headers: { authorization: `Bearer ${testSessionId}` } };
+  nextCalled = false;
+  sessionMiddleware(reqWithBearer, mockRes, () => { nextCalled = true; });
+  assert.equal(nextCalled, true);
+  assert.ok(reqWithBearer.user);
+  assert.equal(reqWithBearer.user.id, founder.id);
+  assert.equal(reqWithBearer.user.role, 'FOUNDER');
+
+  // 5. Test requireAuth passes with authenticated founder
+  let authPassed = false;
+  requireAuth(reqWithBearer, mockRes, () => { authPassed = true; });
+  assert.equal(authPassed, true);
+
+  // 6. Test requireAuth rejects unauthenticated requests with HTTP 401
+  let statusCode = 0;
+  let responseBody: any = null;
+  const rejectRes: any = {
+    status: (code: number) => {
+      statusCode = code;
+      return {
+        json: (body: any) => { responseBody = body; },
+      };
+    },
+  };
+  requireAuth({ headers: {} } as any, rejectRes, () => {});
+  assert.equal(statusCode, 401);
+  assert.equal(responseBody.error, 'Authentication required. Please log in.');
+
+  // 7. Test requireRole(['FOUNDER']) accepts FOUNDER and rejects STUDENT
+  let rolePassed = false;
+  const founderGuard = requireRole(['FOUNDER']);
+  founderGuard(reqWithBearer, rejectRes, () => { rolePassed = true; });
+  assert.equal(rolePassed, true);
+
+  // Rejects STUDENT attempting to access founder routes
+  const studentUser: any = { role: 'STUDENT', status: 'ACTIVE' };
+  statusCode = 0;
+  responseBody = null;
+  founderGuard({ user: studentUser } as any, rejectRes, () => {});
+  assert.equal(statusCode, 403);
+  assert.match(responseBody.error, /Requires one of \[FOUNDER\] roles/);
+
+  // Clean up test session
+  db.prepare('DELETE FROM sessions WHERE id = ?').run(testSessionId);
 });

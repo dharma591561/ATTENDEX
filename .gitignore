@@ -6,6 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
-data/
-uploads/avatars/
+data/test_*.db*
+*.db-shm
+*.db-wal
+*.db-journal
 .playwright-cli/

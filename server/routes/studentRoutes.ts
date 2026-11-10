@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { db } from '../db/database';
 import { hashPassword, verifyPassword, createSession } from '../services/authService';
 import { validateRollNumber, verifyOtp, hasRecentlyVerifiedOtp, createVerificationGrant, validateAndConsumeGrant } from '../services/otpService';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requireRole, setSessionCookie } from '../middleware/auth';
 import { uploadAvatarMiddleware, validateImageMagicBytes, saveAvatarFile } from '../middleware/upload';
 import { logAuditEvent } from '../services/auditService';
 
@@ -117,13 +117,8 @@ studentRouter.post('/register', async (req: Request, res: Response) => {
     const userAgent = req.headers['user-agent'];
     const sessionId = createSession(userId, ip, userAgent);
 
-    const isHttps = process.env.NODE_ENV === 'production' || req.secure || req.headers['x-forwarded-proto'] === 'https';
-    res.cookie('attendx_session', sessionId, {
-      httpOnly: true,
-      secure: isHttps,
-      sameSite: isHttps ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    // Set HTTP-only Cookie with full site scope (path: '/'), SameSite, and HTTPS detection
+    setSessionCookie(res, req, sessionId);
 
     logAuditEvent({
       actorUserId: userId,

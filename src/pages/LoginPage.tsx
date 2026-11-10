@@ -52,7 +52,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, defaultRole = 
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full bg-white rounded-xl border border-slate-200 p-8 shadow-xs">
         <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">ATTENDX Login Portal</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">CLASSYNC Login Portal</h2>
           <p className="text-xs text-slate-500 mt-1">Select your academic role to access your portal</p>
         </div>
 
@@ -161,7 +161,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, defaultRole = 
                     ? 'student@university.edu'
                     : selectedRole === 'FACULTY'
                     ? 'professor@university.edu'
-                    : 'founder@attendx.internal'
+                    : 'founder@classync.internal'
                 }
                 className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 bg-white"
               />

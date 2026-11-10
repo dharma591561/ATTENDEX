@@ -105,7 +105,7 @@ export async function initializeFounder(customEmail?: string, customPassword?: s
 
     if (!email || !password) {
       console.log('\n======================================================');
-      console.log('   ATTENDX — SECURE FOUNDER INITIALIZATION CLI        ');
+      console.log('   CLASSYNC — SECURE FOUNDER INITIALIZATION CLI       ');
       console.log('======================================================');
       console.log('This utility configures the single Super Administrator account.');
       console.log('It can be run exactly ONCE. Credentials are never hardcoded.\n');

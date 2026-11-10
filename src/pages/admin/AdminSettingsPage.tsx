@@ -67,7 +67,7 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({ onNavigate
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">Journal Mode:</span>
-              <span className="text-emerald-700 font-semibold">WAL (Write-Ahead Logging)</span>
+              <span className="text-emerald-700 font-semibold">DELETE (Synchronous FULL Durability)</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">Foreign Key Constraints:</span>

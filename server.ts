@@ -4,12 +4,13 @@ import path from 'path';
 import fs from 'fs';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import { initDatabase, cleanExpiredSessions } from './server/db/database';
+import { db, initDatabase, cleanExpiredSessions } from './server/db/database';
 import { sessionMiddleware, csrfProtection } from './server/middleware/auth';
 import { authRouter } from './server/routes/authRoutes';
 import { studentRouter } from './server/routes/studentRoutes';
 import { facultyRouter } from './server/routes/facultyRoutes';
 import { adminRouter } from './server/routes/adminRoutes';
+import { initializeFounder, getEnvVar } from './scripts/init-founder';
 
 dotenv.config();
 
@@ -62,6 +63,21 @@ app.get('/api/health', (_req, res) => {
 });
 
 async function startServer() {
+  // Ensure the single Founder account exists if environment secrets are configured
+  // Never overwrites, deletes, or recreates an existing Founder account
+  try {
+    const existingFounder = db.prepare("SELECT id FROM users WHERE role = 'FOUNDER'").get();
+    if (!existingFounder) {
+      const founderEmail = getEnvVar('FOUNDER_EMAIL');
+      const founderPassword = getEnvVar('FOUNDER_PASSWORD');
+      if (founderEmail && founderPassword) {
+        await initializeFounder(founderEmail, founderPassword);
+      }
+    }
+  } catch (err) {
+    console.error('[CLASSYNC Founder Check Error]', err);
+  }
+
   const httpServer = http.createServer(app);
 
   if (!isProd) {
@@ -85,11 +101,11 @@ async function startServer() {
   }
 
   httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`[ATTENDX Server] Running at http://localhost:${PORT} in ${isProd ? 'production' : 'development'} mode.`);
+    console.log(`[CLASSYNC Server] Running at http://localhost:${PORT} in ${isProd ? 'production' : 'development'} mode.`);
   });
 }
 
 startServer().catch((err) => {
-  console.error('[ATTENDX Server Error]', err);
+  console.error('[CLASSYNC Server Error]', err);
   process.exit(1);
 });

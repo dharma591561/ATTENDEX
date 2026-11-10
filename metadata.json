@@ -1,5 +1,5 @@
 {
-  "name": "ATTENDX — College Portal",
+  "name": "CLASSYNC — College Portal",
   "description": "Official college attendance and student management platform for students, faculty, and administrators.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

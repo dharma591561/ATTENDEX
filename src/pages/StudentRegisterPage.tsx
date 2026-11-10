@@ -240,7 +240,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
 
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">Registration Confirmed</h2>
           <p className="text-xs text-slate-500 mt-1 mb-6">
-            Your ATTENDX student identity has been successfully registered and verified.
+            Your CLASSYNC student identity has been successfully registered and verified.
           </p>
 
           {/* Academic ID Card Preview */}

@@ -25,7 +25,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
               Official College Academic System · Phase 1
             </div>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-slate-900 leading-tight">
-              ATTENDX College Portal
+              CLASSYNC College Portal
             </h1>
             <p className="mt-4 text-base sm:text-lg text-slate-600 leading-relaxed">
               A secure, relational database-backed college platform supporting student registration, verified academic roll number mapping, faculty application review, and super administrator oversight.
