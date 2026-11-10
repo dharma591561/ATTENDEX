@@ -1,38 +1,10 @@
 import { User, StudentProfile, FacultyProfile, FacultyApplication, AdminStats, AuditLog } from '../types';
 
-const SESSION_STORAGE_KEY = 'attendx_session_token';
-
-export function getStoredSessionToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return localStorage.getItem(SESSION_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function setStoredSessionToken(token: string | null): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (token) {
-      localStorage.setItem(SESSION_STORAGE_KEY, token);
-    } else {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
-    }
-  } catch {}
-}
-
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
   headers.set('X-Attendx-Client', 'web');
   if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
-  }
-
-  // Attach session token in Authorization header for cross-origin / iframe compatibility
-  const token = getStoredSessionToken();
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`);
   }
 
   const response = await fetch(url, {
@@ -62,35 +34,13 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   auth: {
-    getMe: async () => {
-      try {
-        const res = await request<{ user: User | null }>('/api/auth/me');
-        if (!res.user) {
-          setStoredSessionToken(null);
-        }
-        return res;
-      } catch (err) {
-        setStoredSessionToken(null);
-        throw err;
-      }
-    },
-    login: async (credentials: { email: string; password: string; expectedRole?: string }) => {
-      const res = await request<{ success: boolean; user: User; sessionId: string }>('/api/auth/login', {
+    getMe: () => request<{ user: User | null }>('/api/auth/me'),
+    login: (credentials: { email: string; password: string; expectedRole?: string }) =>
+      request<{ success: boolean; user: User; sessionId: string }>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify(credentials),
-      });
-      if (res.sessionId) {
-        setStoredSessionToken(res.sessionId);
-      }
-      return res;
-    },
-    logout: async () => {
-      try {
-        return await request<{ success: boolean; message: string }>('/api/auth/logout', { method: 'POST' });
-      } finally {
-        setStoredSessionToken(null);
-      }
-    },
+      }),
+    logout: () => request<{ success: boolean; message: string }>('/api/auth/logout', { method: 'POST' }),
     sendOtp: (email: string, purpose: 'STUDENT_REGISTRATION' | 'FACULTY_REGISTRATION' | 'PASSWORD_RESET') =>
       request<{ success: boolean; message: string }>('/api/auth/send-otp', {
         method: 'POST',
@@ -110,16 +60,11 @@ export const api = {
   },
 
   students: {
-    register: async (payload: any) => {
-      const res = await request<{ success: boolean; user: User; sessionId: string; message: string }>('/api/students/register', {
+    register: (payload: any) =>
+      request<{ success: boolean; user: User; sessionId: string; message: string }>('/api/students/register', {
         method: 'POST',
         body: JSON.stringify(payload),
-      });
-      if (res.sessionId) {
-        setStoredSessionToken(res.sessionId);
-      }
-      return res;
-    },
+      }),
     getProfile: () => request<{ profile: StudentProfile }>('/api/students/me'),
     updateProfile: (updates: { fullName?: string; bio?: string; phone?: string }) =>
       request<{ success: boolean; profile: StudentProfile }>('/api/students/me', {

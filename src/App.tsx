@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
-import { User } from './types';
 
 // Pages
 import { LandingPage } from './pages/LandingPage';
@@ -31,21 +30,6 @@ function MainRouter() {
   const { user, loading } = useAuth();
   const [currentView, setCurrentView] = useState<string>('landing');
 
-  // Automatically route to role dashboard upon login or to landing upon logout
-  useEffect(() => {
-    if (user) {
-      if (currentView === 'login' || currentView === 'landing') {
-        if (user.role === 'STUDENT') setCurrentView('student-dashboard');
-        else if (user.role === 'FACULTY') setCurrentView('faculty-dashboard');
-        else if (user.role === 'FOUNDER') setCurrentView('admin-dashboard');
-      }
-    } else {
-      if (currentView.startsWith('admin-') || (currentView.startsWith('student-') && currentView !== 'student-register') || (currentView.startsWith('faculty-') && currentView !== 'faculty-apply')) {
-        setCurrentView('landing');
-      }
-    }
-  }, [user]);
-
   // Loading state
   if (loading) {
     return (
@@ -57,35 +41,33 @@ function MainRouter() {
   }
 
   // Guard routing based on role
-  const navigate = (view: string, currentUser?: User | null) => {
-    const activeUser = currentUser !== undefined ? currentUser : user;
-
+  const navigate = (view: string) => {
     // If user is logged in and selects landing or login, route to their role dashboard
-    if (activeUser && (view === 'login' || view === 'landing')) {
-      if (activeUser.role === 'STUDENT') {
+    if (user && (view === 'login' || view === 'landing')) {
+      if (user.role === 'STUDENT') {
         setCurrentView('student-dashboard');
         return;
       }
-      if (activeUser.role === 'FACULTY') {
+      if (user.role === 'FACULTY') {
         setCurrentView('faculty-dashboard');
         return;
       }
-      if (activeUser.role === 'FOUNDER') {
+      if (user.role === 'FOUNDER') {
         setCurrentView('admin-dashboard');
         return;
       }
     }
 
     // Role protection - student registration and faculty application are public entry points
-    if (view.startsWith('student-') && view !== 'student-register' && (!activeUser || activeUser.role !== 'STUDENT')) {
+    if (view.startsWith('student-') && view !== 'student-register' && (!user || user.role !== 'STUDENT')) {
       setCurrentView('login');
       return;
     }
-    if (view.startsWith('faculty-') && view !== 'faculty-apply' && (!activeUser || activeUser.role !== 'FACULTY')) {
+    if (view.startsWith('faculty-') && view !== 'faculty-apply' && (!user || user.role !== 'FACULTY')) {
       setCurrentView('login');
       return;
     }
-    if (view.startsWith('admin-') && (!activeUser || activeUser.role !== 'FOUNDER')) {
+    if (view.startsWith('admin-') && (!user || user.role !== 'FOUNDER')) {
       setCurrentView('login');
       return;
     }
