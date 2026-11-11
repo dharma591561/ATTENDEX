@@ -78,7 +78,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onNavigate }
             {profile?.branch} · Sec {profile?.section}
           </div>
           <p className="text-[11px] text-slate-500 mt-2">
-            Computer Science & Engineering batch 2026.
+            {profile?.branch ? `Enrolled in ${profile.branch} · Section ${profile.section || 'N/A'}` : 'Official academic department and section assignment.'}
           </p>
         </div>
 

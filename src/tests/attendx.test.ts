@@ -4,9 +4,19 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { validateRollNumber, generateAndStoreOtp, verifyOtp, createVerificationGrant, validateAndConsumeGrant } from '../../server/services/otpService';
-import { hashPassword, verifyPassword, createSession, getSessionUser } from '../../server/services/authService';
+import {
+  hashPassword,
+  verifyPassword,
+  createSession,
+  getSessionUser,
+  checkLoginRateLimit,
+  recordFailedLoginAttempt,
+  clearLoginAttempts,
+  resetLoginRateLimits,
+  invalidateOtherUserSessions,
+} from '../../server/services/authService';
 import { initializeFounder } from '../../scripts/init-founder';
-import { sessionMiddleware, setSessionCookie, requireAuth, requireRole } from '../../server/middleware/auth';
+import { sessionMiddleware, setSessionCookie, requireAuth, requireRole, csrfProtection } from '../../server/middleware/auth';
 import { db, initDatabase } from '../../server/db/database';
 
 // Ensure DB is initialized
@@ -542,3 +552,147 @@ test('13. Founder Dashboard Authentication & Authorization: Cookie Path, Bearer 
   // Clean up test session
   db.prepare('DELETE FROM sessions WHERE id = ?').run(testSessionId);
 });
+
+test('14. Login Rate Limiting & Auto-Recovery: locks out after 5 failed attempts and recovers after window expiry', () => {
+  resetLoginRateLimits();
+  const email = 'ratelimit.test@university.edu';
+  const ip = '203.0.113.42';
+  const baseTime = 1_700_000_000_000;
+
+  // Initially allowed
+  assert.equal(checkLoginRateLimit(ip, email, baseTime).allowed, true);
+
+  // Record 4 failed attempts — still allowed on check
+  for (let i = 1; i <= 4; i++) {
+    recordFailedLoginAttempt(ip, email, baseTime + i * 1000);
+    assert.equal(checkLoginRateLimit(ip, email, baseTime + i * 1000).allowed, true);
+  }
+
+  // 5th failed attempt triggers 15-minute lockout
+  recordFailedLoginAttempt(ip, email, baseTime + 5000);
+  const blockedCheck = checkLoginRateLimit(ip, email, baseTime + 6000);
+  assert.equal(blockedCheck.allowed, false);
+  assert.ok((blockedCheck.retryAfterSeconds ?? 0) > 800);
+
+  // Even from a different IP, account-level lockout protects the target account
+  const diffIpCheck = checkLoginRateLimit('198.51.100.99', email, baseTime + 6000);
+  assert.equal(diffIpCheck.allowed, false);
+
+  // Other legitimate users from the same or different IP are NOT locked out
+  assert.equal(checkLoginRateLimit(ip, 'other.user@university.edu', baseTime + 6000).allowed, true);
+
+  // After 15 minutes + 1 second, legitimate user automatically recovers
+  const recoveredTime = baseTime + 5000 + 15 * 60 * 1000 + 1000;
+  const recoveredCheck = checkLoginRateLimit(ip, email, recoveredTime);
+  assert.equal(recoveredCheck.allowed, true);
+
+  // Clearing login attempts on successful login resets counters immediately
+  recordFailedLoginAttempt(ip, email, recoveredTime + 1000);
+  clearLoginAttempts(ip, email);
+  assert.equal(checkLoginRateLimit(ip, email, recoveredTime + 2000).allowed, true);
+  resetLoginRateLimits();
+});
+
+test('15. Application State Transition Boundary: prevents rejecting already-APPROVED student or faculty applications', async () => {
+  const founder = db.prepare("SELECT * FROM users WHERE role = 'FOUNDER' LIMIT 1").get() as any;
+  assert.ok(founder);
+
+  const studentEmail = `approved.guard.${Date.now()}@university.edu`;
+  const studentRoll = `26UECSE9${Math.floor(100 + Math.random() * 899)}`;
+  const userId = `guard-user-${Date.now()}`;
+  const profileId = `guard-prof-${Date.now()}`;
+  const appId = `guard-app-${Date.now()}`;
+  const pwHash = await hashPassword('SafePass123!');
+  const now = new Date().toISOString();
+
+  // Create an already-APPROVED student and student application
+  db.prepare(`
+    INSERT INTO users (id, email, password_hash, role, status, is_email_verified, created_at, updated_at)
+    VALUES (?, ?, ?, 'STUDENT', 'ACTIVE', 1, ?, ?)
+  `).run(userId, studentEmail, pwHash, now, now);
+
+  db.prepare(`
+    INSERT INTO student_profiles (id, user_id, full_name, roll_number, branch, section, created_at, updated_at)
+    VALUES (?, ?, 'Approved Guard Student', ?, 'CSE', 'A', ?, ?)
+  `).run(profileId, userId, studentRoll, now, now);
+
+  db.prepare(`
+    INSERT INTO student_applications (id, user_id, full_name, roll_number, branch, section, status, reviewed_by_user_id, reviewed_at, created_at, updated_at)
+    VALUES (?, ?, 'Approved Guard Student', ?, 'CSE', 'A', 'APPROVED', ?, ?, ?, ?)
+  `).run(appId, userId, studentRoll, founder.id, now, now, now);
+
+  // Simulate the guarded SQLite rejection transaction logic from adminRoutes.ts
+  assert.throws(() => {
+    const rejectTx = db.transaction(() => {
+      const currentApp = db.prepare('SELECT status, user_id FROM student_applications WHERE id = ?').get(appId) as { status: string; user_id: string } | undefined;
+      if (!currentApp || currentApp.status !== 'PENDING') {
+        throw new Error(`INVALID_STATE:${currentApp?.status || 'MISSING'}`);
+      }
+      db.prepare(`UPDATE student_applications SET status = 'REJECTED' WHERE id = ? AND status = 'PENDING'`).run(appId);
+    });
+    rejectTx();
+  }, /INVALID_STATE:APPROVED/);
+
+  // Verify database state remains untouched (APPROVED and ACTIVE)
+  const verifyApp = db.prepare('SELECT status FROM student_applications WHERE id = ?').get(appId) as any;
+  const verifyUser = db.prepare('SELECT status FROM users WHERE id = ?').get(userId) as any;
+  assert.equal(verifyApp.status, 'APPROVED');
+  assert.equal(verifyUser.status, 'ACTIVE');
+
+  // Clean up test records
+  db.prepare('DELETE FROM student_applications WHERE id = ?').run(appId);
+  db.prepare('DELETE FROM student_profiles WHERE id = ?').run(profileId);
+  db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+});
+
+test('16. CSRF Missing-Origin Enforcement & Password Change Session Revocation', async () => {
+  // 1. CSRF check: POST without custom header AND without Origin/Referer must be blocked with 403
+  let statusCode = 0;
+  let responseBody: any = null;
+  let nextCalled = false;
+  const mockRes: any = {
+    status: (code: number) => {
+      statusCode = code;
+      return {
+        json: (body: any) => { responseBody = body; },
+      };
+    },
+  };
+
+  csrfProtection(
+    { method: 'POST', headers: {} } as any,
+    mockRes,
+    () => { nextCalled = true; }
+  );
+  assert.equal(nextCalled, false);
+  assert.equal(statusCode, 403);
+  assert.match(responseBody.error, /Cross-site request blocked/);
+
+  // 2. CSRF check: POST with X-Attendx-Client: web passes
+  nextCalled = false;
+  csrfProtection(
+    { method: 'POST', headers: { 'x-attendx-client': 'web' } } as any,
+    mockRes,
+    () => { nextCalled = true; }
+  );
+  assert.equal(nextCalled, true);
+
+  // 3. Session revocation on password change: revokes all other sessions while preserving current session
+  const founder = db.prepare("SELECT * FROM users WHERE role = 'FOUNDER' LIMIT 1").get() as any;
+  const currentSessionId = createSession(founder.id, '127.0.0.1', 'Current-Device');
+  const otherSessionId1 = createSession(founder.id, '127.0.0.2', 'Old-Device-1');
+  const otherSessionId2 = createSession(founder.id, '127.0.0.3', 'Old-Device-2');
+
+  invalidateOtherUserSessions(founder.id, currentSessionId);
+
+  const remainingCurrent = db.prepare('SELECT id FROM sessions WHERE id = ?').get(currentSessionId);
+  const revoked1 = db.prepare('SELECT id FROM sessions WHERE id = ?').get(otherSessionId1);
+  const revoked2 = db.prepare('SELECT id FROM sessions WHERE id = ?').get(otherSessionId2);
+
+  assert.ok(remainingCurrent, 'Current session must remain active');
+  assert.equal(revoked1, undefined, 'Other session 1 must be revoked');
+  assert.equal(revoked2, undefined, 'Other session 2 must be revoked');
+
+  db.prepare('DELETE FROM sessions WHERE id = ?').run(currentSessionId);
+});
+

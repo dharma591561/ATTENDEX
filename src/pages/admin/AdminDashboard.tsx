@@ -82,9 +82,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
             <Users className="w-4 h-4 text-blue-600" />
           </div>
           <div className="text-2xl font-bold font-mono tracking-tight text-slate-900 tabular-nums">
-            {loading ? '...' : stats?.approvedStudents ?? stats?.totalStudents ?? 0}
+            {loading ? '...' : stats?.totalStudents ?? stats?.approvedStudents ?? 0}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Approved student accounts</p>
+          <p className="text-[11px] text-slate-500 mt-1">Active student accounts</p>
         </div>
 
         {/* Pending Student Applications */}

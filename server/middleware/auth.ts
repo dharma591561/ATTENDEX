@@ -130,8 +130,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
   // 2. Validate Origin / Referer header against authorized hosts
   const origin = (req.headers.origin || req.headers.referer) as string | undefined;
   if (!origin) {
-    // Non-browser / same-origin direct requests without origin header
-    return next();
+    return res.status(403).json({ error: 'Cross-site request blocked: missing client or origin verification.' });
   }
 
   try {

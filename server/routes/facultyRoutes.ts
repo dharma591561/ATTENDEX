@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { db } from '../db/database';
-import { hashPassword, verifyPassword } from '../services/authService';
+import { hashPassword, verifyPassword, invalidateOtherUserSessions } from '../services/authService';
 import { verifyOtp, hasRecentlyVerifiedOtp, createVerificationGrant, validateAndConsumeGrant } from '../services/otpService';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { uploadAvatarMiddleware, validateImageMagicBytes, saveAvatarFile } from '../middleware/upload';
@@ -18,17 +18,25 @@ facultyRouter.post('/applications', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'All fields are required.' });
     }
 
+    if (typeof fullName !== 'string' || typeof department !== 'string' || typeof designation !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ error: 'Invalid field format.' });
+    }
+
+    if (fullName.trim().length > 120 || department.trim().length > 100 || designation.trim().length > 100) {
+      return res.status(400).json({ error: 'Full name (max 120) or department/designation (max 100) exceeds maximum length.' });
+    }
+
     if (password !== confirmPassword) {
       return res.status(400).json({ error: 'Passwords do not match.' });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+    if (password.length < 8 || password.length > 72) {
+      return res.status(400).json({ error: 'Password must be between 8 and 72 characters long.' });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(normalizedEmail)) {
+    if (normalizedEmail.length > 254 || !emailRegex.test(normalizedEmail)) {
       return res.status(400).json({ error: 'Please enter a valid email address.' });
     }
 
@@ -162,27 +170,32 @@ facultyRouter.patch('/me', requireAuth, requireRole(['FACULTY']), (req: Request,
     const values: any[] = [];
 
     if (fullName !== undefined) {
-      if (!fullName.trim()) return res.status(400).json({ error: 'Full name cannot be empty.' });
+      if (typeof fullName !== 'string' || !fullName.trim()) return res.status(400).json({ error: 'Full name cannot be empty.' });
+      if (fullName.trim().length > 120) return res.status(400).json({ error: 'Full name must not exceed 120 characters.' });
       updates.push('full_name = ?');
       values.push(fullName.trim());
     }
 
     if (department !== undefined) {
+      if (typeof department === 'string' && department.trim().length > 100) return res.status(400).json({ error: 'Department must not exceed 100 characters.' });
       updates.push('department = ?');
       values.push(department.trim());
     }
 
     if (designation !== undefined) {
+      if (typeof designation === 'string' && designation.trim().length > 100) return res.status(400).json({ error: 'Designation must not exceed 100 characters.' });
       updates.push('designation = ?');
       values.push(designation.trim());
     }
 
     if (bio !== undefined) {
+      if (bio && typeof bio === 'string' && bio.trim().length > 500) return res.status(400).json({ error: 'Bio must not exceed 500 characters.' });
       updates.push('bio = ?');
       values.push(bio ? bio.trim() : null);
     }
 
     if (phone !== undefined) {
+      if (phone && typeof phone === 'string' && phone.trim().length > 30) return res.status(400).json({ error: 'Phone number must not exceed 30 characters.' });
       updates.push('phone = ?');
       values.push(phone ? phone.trim() : null);
     }
@@ -264,8 +277,8 @@ facultyRouter.post('/me/change-password', requireAuth, requireRole(['FACULTY']),
       return res.status(400).json({ error: 'Current password and new password are required.' });
     }
 
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+    if (newPassword.length < 8 || newPassword.length > 72) {
+      return res.status(400).json({ error: 'New password must be between 8 and 72 characters long.' });
     }
 
     const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user!.id) as { password_hash: string };
@@ -278,6 +291,9 @@ facultyRouter.post('/me/change-password', requireAuth, requireRole(['FACULTY']),
     const now = new Date().toISOString();
 
     db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').run(newHash, now, req.user!.id);
+
+    // Revoke any other active sessions for this user while keeping current session active
+    invalidateOtherUserSessions(req.user!.id, req.sessionId);
 
     logAuditEvent({
       actorUserId: req.user!.id,

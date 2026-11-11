@@ -187,11 +187,20 @@ adminRouter.post('/student-applications/:id/approve', (req: Request, res: Respon
     const reviewerId = req.user!.id;
 
     const approveTx = db.transaction(() => {
-      db.prepare(`
+      const current = db.prepare('SELECT status FROM student_applications WHERE id = ?').get(application.id) as any;
+      if (!current || current.status === 'APPROVED') {
+        throw new Error('ALREADY_APPROVED');
+      }
+
+      const updateRes = db.prepare(`
         UPDATE student_applications
         SET status = 'APPROVED', rejection_reason = NULL, reviewed_by_user_id = ?, reviewed_at = ?, updated_at = ?
-        WHERE id = ?
+        WHERE id = ? AND status != 'APPROVED'
       `).run(reviewerId, now, now, application.id);
+
+      if (updateRes.changes === 0) {
+        throw new Error('ALREADY_APPROVED');
+      }
 
       db.prepare(`
         UPDATE users
@@ -222,6 +231,9 @@ adminRouter.post('/student-applications/:id/approve', (req: Request, res: Respon
       message: `Student application for ${application.full_name} (${application.roll_number}) has been approved. The student may now log in.`,
     });
   } catch (err: any) {
+    if (err.message === 'ALREADY_APPROVED') {
+      return res.status(400).json({ error: 'Student application is already approved.' });
+    }
     return res.status(500).json({ error: err.message || 'Error approving student application.' });
   }
 });
@@ -240,21 +252,43 @@ adminRouter.post('/student-applications/:id/reject', (req: Request, res: Respons
       return res.status(404).json({ error: 'Student application not found.' });
     }
 
+    if (application.status === 'APPROVED') {
+      return res.status(400).json({
+        error: 'Approved student applications cannot be rejected. Use the Student Directory to suspend an active student account if needed.',
+      });
+    }
+
+    if (application.status === 'REJECTED') {
+      return res.status(400).json({ error: 'Student application is already rejected.' });
+    }
+
     const now = new Date().toISOString();
     const reviewerId = req.user!.id;
-    const rejectionReason = (reason || '').trim() || 'Student application did not meet enrollment verification criteria.';
+    const rejectionReason = ((reason || '').trim() || 'Student application did not meet enrollment verification criteria.').slice(0, 500);
 
     const rejectTx = db.transaction(() => {
-      db.prepare(`
+      const current = db.prepare('SELECT status FROM student_applications WHERE id = ?').get(application.id) as any;
+      if (!current || current.status === 'APPROVED') {
+        throw new Error('CANNOT_REJECT_APPROVED');
+      }
+      if (current.status === 'REJECTED') {
+        throw new Error('ALREADY_REJECTED');
+      }
+
+      const updateRes = db.prepare(`
         UPDATE student_applications
         SET status = 'REJECTED', rejection_reason = ?, reviewed_by_user_id = ?, reviewed_at = ?, updated_at = ?
-        WHERE id = ?
+        WHERE id = ? AND status = 'PENDING'
       `).run(rejectionReason, reviewerId, now, now, application.id);
+
+      if (updateRes.changes === 0) {
+        throw new Error('INVALID_STATE_TRANSITION');
+      }
 
       db.prepare(`
         UPDATE users
         SET status = 'REJECTED', updated_at = ?
-        WHERE id = ?
+        WHERE id = ? AND status != 'ACTIVE'
       `).run(now, application.user_id);
     });
 
@@ -282,6 +316,14 @@ adminRouter.post('/student-applications/:id/reject', (req: Request, res: Respons
       message: `Student application for ${application.full_name} (${application.roll_number}) was rejected.`,
     });
   } catch (err: any) {
+    if (err.message === 'CANNOT_REJECT_APPROVED') {
+      return res.status(400).json({
+        error: 'Approved student applications cannot be rejected. Use the Student Directory to suspend an active student account if needed.',
+      });
+    }
+    if (err.message === 'ALREADY_REJECTED' || err.message === 'INVALID_STATE_TRANSITION') {
+      return res.status(400).json({ error: 'Student application cannot be rejected from its current state.' });
+    }
     return res.status(500).json({ error: err.message || 'Error rejecting student application.' });
   }
 });
@@ -336,12 +378,21 @@ adminRouter.post('/faculty-applications/:id/approve', (req: Request, res: Respon
 
     // Database transaction to update application and user account status
     const approveTx = db.transaction(() => {
+      const current = db.prepare('SELECT status FROM faculty_applications WHERE id = ?').get(id) as any;
+      if (!current || current.status === 'APPROVED') {
+        throw new Error('ALREADY_APPROVED');
+      }
+
       // Update application
-      db.prepare(`
+      const updateRes = db.prepare(`
         UPDATE faculty_applications
         SET status = 'APPROVED', reviewed_by_user_id = ?, reviewed_at = ?, updated_at = ?
-        WHERE id = ?
+        WHERE id = ? AND status != 'APPROVED'
       `).run(reviewerId, now, now, id);
+
+      if (updateRes.changes === 0) {
+        throw new Error('ALREADY_APPROVED');
+      }
 
       // Update user account to ACTIVE
       db.prepare(`
@@ -367,6 +418,9 @@ adminRouter.post('/faculty-applications/:id/approve', (req: Request, res: Respon
       message: `Faculty application for ${application.full_name} has been approved. The professor may now log in.`,
     });
   } catch (err: any) {
+    if (err.message === 'ALREADY_APPROVED') {
+      return res.status(400).json({ error: 'Application is already approved.' });
+    }
     return res.status(500).json({ error: err.message || 'Error approving application.' });
   }
 });
@@ -385,21 +439,41 @@ adminRouter.post('/faculty-applications/:id/reject', (req: Request, res: Respons
       return res.status(404).json({ error: 'Faculty application not found.' });
     }
 
+    if (application.status === 'APPROVED') {
+      return res.status(400).json({ error: 'Approved faculty applications cannot be rejected.' });
+    }
+
+    if (application.status === 'REJECTED') {
+      return res.status(400).json({ error: 'Faculty application is already rejected.' });
+    }
+
     const now = new Date().toISOString();
     const reviewerId = req.user!.id;
-    const rejectionReason = (reason || '').trim() || 'Application did not meet departmental verification criteria.';
+    const rejectionReason = ((reason || '').trim() || 'Application did not meet departmental verification criteria.').slice(0, 500);
 
     const rejectTx = db.transaction(() => {
-      db.prepare(`
+      const current = db.prepare('SELECT status FROM faculty_applications WHERE id = ?').get(id) as any;
+      if (!current || current.status === 'APPROVED') {
+        throw new Error('CANNOT_REJECT_APPROVED');
+      }
+      if (current.status === 'REJECTED') {
+        throw new Error('ALREADY_REJECTED');
+      }
+
+      const updateRes = db.prepare(`
         UPDATE faculty_applications
         SET status = 'REJECTED', rejection_reason = ?, reviewed_by_user_id = ?, reviewed_at = ?, updated_at = ?
-        WHERE id = ?
+        WHERE id = ? AND status = 'PENDING'
       `).run(rejectionReason, reviewerId, now, now, id);
+
+      if (updateRes.changes === 0) {
+        throw new Error('INVALID_STATE_TRANSITION');
+      }
 
       db.prepare(`
         UPDATE users
         SET status = 'REJECTED', updated_at = ?
-        WHERE id = ?
+        WHERE id = ? AND status != 'ACTIVE'
       `).run(now, application.user_id);
     });
 
@@ -422,6 +496,12 @@ adminRouter.post('/faculty-applications/:id/reject', (req: Request, res: Respons
       message: `Faculty application for ${application.full_name} was rejected.`,
     });
   } catch (err: any) {
+    if (err.message === 'CANNOT_REJECT_APPROVED') {
+      return res.status(400).json({ error: 'Approved faculty applications cannot be rejected.' });
+    }
+    if (err.message === 'ALREADY_REJECTED' || err.message === 'INVALID_STATE_TRANSITION') {
+      return res.status(400).json({ error: 'Faculty application cannot be rejected from its current state.' });
+    }
     return res.status(500).json({ error: err.message || 'Error rejecting application.' });
   }
 });

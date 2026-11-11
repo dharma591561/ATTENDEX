@@ -1,7 +1,16 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { db } from '../db/database';
-import { hashPassword, verifyPassword, createSession } from '../services/authService';
+import {
+  hashPassword,
+  verifyPassword,
+  createSession,
+  DUMMY_BCRYPT_HASH,
+  checkLoginRateLimit,
+  recordFailedLoginAttempt,
+  clearLoginAttempts,
+  invalidateOtherUserSessions,
+} from '../services/authService';
 import { validateRollNumber, verifyOtp, hasRecentlyVerifiedOtp, createVerificationGrant, validateAndConsumeGrant } from '../services/otpService';
 import { requireAuth, requireRole, setSessionCookie } from '../middleware/auth';
 import { uploadAvatarMiddleware, validateImageMagicBytes, saveAvatarFile } from '../middleware/upload';
@@ -19,17 +28,29 @@ studentRouter.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'All fields are required.' });
     }
 
+    if (typeof fullName !== 'string' || typeof branch !== 'string' || typeof section !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ error: 'Invalid field format.' });
+    }
+
+    if (fullName.trim().length > 120) {
+      return res.status(400).json({ error: 'Full name must not exceed 120 characters.' });
+    }
+
+    if (branch.trim().length > 100 || section.trim().length > 20) {
+      return res.status(400).json({ error: 'Branch must not exceed 100 characters and section must not exceed 20 characters.' });
+    }
+
     if (password !== confirmPassword) {
       return res.status(400).json({ error: 'Passwords do not match.' });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+    if (password.length < 8 || password.length > 72) {
+      return res.status(400).json({ error: 'Password must be between 8 and 72 characters long.' });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(normalizedEmail)) {
+    if (normalizedEmail.length > 254 || !emailRegex.test(normalizedEmail)) {
       return res.status(400).json({ error: 'Invalid university email address.' });
     }
 
@@ -177,7 +198,7 @@ studentRouter.post('/register', async (req: Request, res: Response) => {
   }
 });
 
-// Check Student Application Status (Protected against unrestricted email-only enumeration)
+// Check Student Application Status (Protected against unrestricted email-only enumeration and brute force)
 async function handleStudentApplicationStatus(req: Request, res: Response) {
   try {
     const rawEmail = (req.body?.email || req.query?.email || '') as string;
@@ -198,6 +219,16 @@ async function handleStudentApplicationStatus(req: Request, res: Response) {
       });
     }
 
+    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
+    const rateCheck = checkLoginRateLimit(ip, email);
+    if (!rateCheck.allowed) {
+      res.setHeader('Retry-After', String(rateCheck.retryAfterSeconds || 900));
+      return res.status(429).json({
+        error: rateCheck.error || 'Too many failed verification attempts. Please try again later.',
+        retryAfterSeconds: rateCheck.retryAfterSeconds,
+      });
+    }
+
     const record = db.prepare(`
       SELECT sa.id, sa.user_id, sa.full_name, sa.roll_number, sa.branch, sa.section,
              sa.status, sa.rejection_reason, sa.created_at, sa.reviewed_at,
@@ -208,11 +239,16 @@ async function handleStudentApplicationStatus(req: Request, res: Response) {
     `).get(email) as any;
 
     if (!record) {
+      if (rawPassword) {
+        await verifyPassword(rawPassword, DUMMY_BCRYPT_HASH);
+      }
+      recordFailedLoginAttempt(ip, email);
       return res.status(404).json({ error: 'No student application found matching the provided credentials.' });
     }
 
     // Verify roll number if provided
     if (rollNumber && record.roll_number.toUpperCase() !== rollNumber) {
+      recordFailedLoginAttempt(ip, email);
       return res.status(403).json({
         error: 'Verification failed. The provided roll number does not match this email address.',
       });
@@ -222,11 +258,14 @@ async function handleStudentApplicationStatus(req: Request, res: Response) {
     if (rawPassword) {
       const validPassword = await verifyPassword(rawPassword, record.password_hash);
       if (!validPassword) {
+        recordFailedLoginAttempt(ip, email);
         return res.status(403).json({
           error: 'Verification failed. Incorrect password for this student application.',
         });
       }
     }
+
+    clearLoginAttempts(ip, email);
 
     const effectiveStatus = record.account_status === 'ACTIVE' ? 'APPROVED' : record.status;
 
@@ -285,19 +324,28 @@ studentRouter.patch('/me', requireAuth, requireRole(['STUDENT']), (req: Request,
     const values: any[] = [];
 
     if (fullName !== undefined) {
-      if (!fullName.trim()) {
+      if (typeof fullName !== 'string' || !fullName.trim()) {
         return res.status(400).json({ error: 'Full name cannot be empty.' });
+      }
+      if (fullName.trim().length > 120) {
+        return res.status(400).json({ error: 'Full name must not exceed 120 characters.' });
       }
       updates.push('full_name = ?');
       values.push(fullName.trim());
     }
 
     if (bio !== undefined) {
+      if (bio && typeof bio === 'string' && bio.trim().length > 500) {
+        return res.status(400).json({ error: 'Bio must not exceed 500 characters.' });
+      }
       updates.push('bio = ?');
       values.push(bio ? bio.trim() : null);
     }
 
     if (phone !== undefined) {
+      if (phone && typeof phone === 'string' && phone.trim().length > 30) {
+        return res.status(400).json({ error: 'Phone number must not exceed 30 characters.' });
+      }
       updates.push('phone = ?');
       values.push(phone ? phone.trim() : null);
     }
@@ -379,8 +427,8 @@ studentRouter.post('/me/change-password', requireAuth, requireRole(['STUDENT']),
       return res.status(400).json({ error: 'Current password and new password are required.' });
     }
 
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+    if (newPassword.length < 8 || newPassword.length > 72) {
+      return res.status(400).json({ error: 'New password must be between 8 and 72 characters long.' });
     }
 
     const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user!.id) as { password_hash: string };
@@ -395,6 +443,9 @@ studentRouter.post('/me/change-password', requireAuth, requireRole(['STUDENT']),
     db.prepare(`
       UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?
     `).run(newHash, now, req.user!.id);
+
+    // Revoke any other active sessions for this user while keeping current session active
+    invalidateOtherUserSessions(req.user!.id, req.sessionId);
 
     logAuditEvent({
       actorUserId: req.user!.id,

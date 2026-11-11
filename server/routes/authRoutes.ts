@@ -1,6 +1,17 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../db/database';
-import { hashPassword, verifyPassword, createSession, invalidateSession, invalidateAllUserSessions, getSessionUser } from '../services/authService';
+import {
+  hashPassword,
+  verifyPassword,
+  createSession,
+  invalidateSession,
+  invalidateAllUserSessions,
+  getSessionUser,
+  DUMMY_BCRYPT_HASH,
+  checkLoginRateLimit,
+  recordFailedLoginAttempt,
+  clearLoginAttempts,
+} from '../services/authService';
 import { generateAndStoreOtp, verifyOtp, hasRecentlyVerifiedOtp, createVerificationGrant } from '../services/otpService';
 import { sendOtpEmail, isSmtpConfigured, verifySmtpConnection } from '../services/emailService';
 import { logAuditEvent } from '../services/auditService';
@@ -127,17 +138,32 @@ authRouter.post('/login', async (req: Request, res: Response) => {
   try {
     const { email, password, expectedRole } = req.body;
 
-    if (!email || !password) {
+    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
       return res.status(400).json({ error: 'Email and password are required.' });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
+
+    // 1. Check login rate limit before processing credentials
+    const rateCheck = checkLoginRateLimit(ip, normalizedEmail);
+    if (!rateCheck.allowed) {
+      res.setHeader('Retry-After', String(rateCheck.retryAfterSeconds || 900));
+      return res.status(429).json({
+        error: rateCheck.error || 'Too many failed login attempts. Please try again later.',
+        retryAfterSeconds: rateCheck.retryAfterSeconds,
+      });
+    }
+
     const user = db.prepare(`
       SELECT id, email, password_hash, role, status, is_email_verified, created_at
       FROM users WHERE email = ?
     `).get(normalizedEmail) as any;
 
     if (!user) {
+      // Constant-time dummy comparison to prevent timing-based account enumeration
+      await verifyPassword(password, DUMMY_BCRYPT_HASH);
+
       if (expectedRole === 'FOUNDER') {
         const founderCount = (db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'FOUNDER'").get() as any).count;
         if (founderCount === 0) {
@@ -145,22 +171,36 @@ authRouter.post('/login', async (req: Request, res: Response) => {
             error: 'No founder account has been initialized yet. Please initialize the founder account first via server terminal: npm run init-founder',
           });
         }
-      } else if (expectedRole === 'STUDENT') {
-        return res.status(401).json({
-          error: 'No student account found with this email. If you have not registered yet, please complete student registration.',
-        });
-      } else if (expectedRole === 'FACULTY') {
-        return res.status(401).json({
-          error: 'No faculty account found with this email. If you have not applied yet, please submit a faculty application.',
+      }
+
+      const attempt = recordFailedLoginAttempt(ip, normalizedEmail);
+      if (attempt.locked) {
+        res.setHeader('Retry-After', String(attempt.retryAfterSeconds || 900));
+        return res.status(429).json({
+          error: 'Too many failed login attempts. Please wait 15 minute(s) before trying again.',
+          retryAfterSeconds: attempt.retryAfterSeconds,
         });
       }
+
+      // Unified generic error to prevent account enumeration
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
     const passwordValid = await verifyPassword(password, user.password_hash);
     if (!passwordValid) {
+      const attempt = recordFailedLoginAttempt(ip, normalizedEmail);
+      if (attempt.locked) {
+        res.setHeader('Retry-After', String(attempt.retryAfterSeconds || 900));
+        return res.status(429).json({
+          error: 'Too many failed login attempts. Please wait 15 minute(s) before trying again.',
+          retryAfterSeconds: attempt.retryAfterSeconds,
+        });
+      }
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
+
+    // Clear failed login attempts upon valid credentials
+    clearLoginAttempts(ip, normalizedEmail);
 
     // Enforce role separation if specified
     if (expectedRole && user.role !== expectedRole) {
@@ -213,7 +253,6 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     }
 
     // Create session
-    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
     const userAgent = req.headers['user-agent'];
     const sessionId = createSession(user.id, ip, userAgent);
 
@@ -266,8 +305,8 @@ authRouter.post('/reset-password', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email, verification code, and new password are required.' });
     }
 
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+    if (newPassword.length < 8 || newPassword.length > 72) {
+      return res.status(400).json({ error: 'New password must be between 8 and 72 characters long.' });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -292,8 +331,10 @@ authRouter.post('/reset-password', async (req: Request, res: Response) => {
       WHERE id = ?
     `).run(passwordHash, now, user.id);
 
-    // Invalidate all existing sessions for security
+    // Invalidate all existing sessions and clear rate limits
     invalidateAllUserSessions(user.id);
+    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
+    clearLoginAttempts(ip, normalizedEmail);
 
     logAuditEvent({
       actorUserId: user.id,
