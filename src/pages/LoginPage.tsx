@@ -125,17 +125,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, defaultRole = 
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <div className="flex-1">
               <span>{error}</span>
-              {selectedRole === 'FACULTY' && error.includes('pending') && (
-                <div className="mt-2">
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('application-status')}
-                    className="font-semibold text-rose-900 underline hover:text-rose-950 cursor-pointer"
-                  >
-                    Check Application Status →
-                  </button>
-                </div>
-              )}
+              {(selectedRole === 'FACULTY' || selectedRole === 'STUDENT') &&
+                (error.toLowerCase().includes('pending') || error.toLowerCase().includes('rejected')) && (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('application-status')}
+                      className="font-semibold text-rose-900 underline hover:text-rose-950 cursor-pointer"
+                    >
+                      Check Application Status →
+                    </button>
+                  </div>
+                )}
             </div>
           </div>
         )}
@@ -211,16 +212,28 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, defaultRole = 
         {/* Footer Links based on Role */}
         <div className="mt-6 pt-4 border-t border-slate-100 text-center text-xs text-slate-500">
           {selectedRole === 'STUDENT' && (
-            <p>
-              New CSE student?{' '}
-              <button
-                type="button"
-                onClick={() => onNavigate('student-register')}
-                className="font-semibold text-slate-900 hover:underline cursor-pointer"
-              >
-                Register your account
-              </button>
-            </p>
+            <div className="space-y-1">
+              <p>
+                New student?{' '}
+                <button
+                  type="button"
+                  onClick={() => onNavigate('student-register')}
+                  className="font-semibold text-slate-900 hover:underline cursor-pointer"
+                >
+                  Register your account
+                </button>
+              </p>
+              <p>
+                Registered recently?{' '}
+                <button
+                  type="button"
+                  onClick={() => onNavigate('application-status')}
+                  className="text-slate-600 hover:text-slate-900 underline cursor-pointer"
+                >
+                  Check Application Status
+                </button>
+              </p>
+            </div>
           )}
 
           {selectedRole === 'FACULTY' && (
@@ -258,3 +271,4 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, defaultRole = 
     </div>
   );
 };
+

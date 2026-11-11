@@ -14,34 +14,34 @@ function hashOtp(otp: string, email: string): string {
 }
 
 /**
- * Validates roll number format and roster range.
- * Format: ^26UECSE\d{4}$
- * Initial roster range: 26UECSE0121 through 26UECSE0243 inclusive.
+ * Validates roll number format without hardcoded branch prefix or numerical range restrictions.
+ * Trims whitespace, normalizes to uppercase, and enforces reasonable length (4-24 chars)
+ * and alphanumeric characters (with optional hyphens or slashes).
  */
 export function validateRollNumber(raw: string): { valid: boolean; normalized: string; error?: string } {
   if (!raw || typeof raw !== 'string') {
-    return { valid: false, normalized: '', error: 'Roll number is required' };
+    return { valid: false, normalized: '', error: 'Roll number is required.' };
   }
 
   const normalized = raw.trim().toUpperCase();
-  const formatRegex = /^26UECSE\d{4}$/;
+  if (!normalized) {
+    return { valid: false, normalized: '', error: 'Roll number is required.' };
+  }
 
-  if (!formatRegex.test(normalized)) {
+  if (normalized.length < 4 || normalized.length > 24) {
     return {
       valid: false,
       normalized,
-      error: 'Invalid roll number format. Must start with 26UECSE followed by exactly 4 digits (e.g., 26UECSE0220).',
+      error: 'Roll number must be between 4 and 24 characters long (e.g., 26UECSE0220).',
     };
   }
 
-  const suffixStr = normalized.substring(7); // the 4 digits
-  const suffixNum = parseInt(suffixStr, 10);
-
-  if (suffixNum < 121 || suffixNum > 243) {
+  const formatRegex = /^[A-Z0-9][A-Z0-9\-/]{2,22}[A-Z0-9]$/;
+  if (!formatRegex.test(normalized) || !/[0-9]/.test(normalized)) {
     return {
       valid: false,
       normalized,
-      error: `Roll number ${normalized} is outside the permitted initial roster range (26UECSE0121 to 26UECSE0243 inclusive).`,
+      error: 'Invalid roll number format. Use letters and numbers only (e.g., 26UECSE0220).',
     };
   }
 

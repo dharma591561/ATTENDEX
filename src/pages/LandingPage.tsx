@@ -71,7 +71,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                 <GraduationCap className="w-5 h-5" />
               </div>
               <h3 className="text-base font-bold text-slate-900">Student Portal</h3>
-              <p className="text-xs text-slate-500 mt-1 font-mono">Format: 26UECSE0121 to 26UECSE0243</p>
+              <p className="text-xs text-slate-500 mt-1 font-mono">Status: PENDING → APPROVED</p>
               <ul className="mt-4 space-y-2 text-xs text-slate-600">
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
@@ -79,11 +79,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Enforces unique normalized roll numbers</span>
+                  <span>Enforces unique normalized roll numbers across branches</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Personal profile and photo upload</span>
+                  <span>Requires Founder approval before login is unlocked</span>
                 </li>
               </ul>
             </div>
@@ -149,7 +149,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Review faculty applications and manage roster</span>
+                  <span>Review student & faculty applications and manage roster</span>
                 </li>
               </ul>
             </div>
@@ -209,14 +209,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </div>
             <div>
               <div className="text-xs font-semibold text-slate-900">Persistent Relational Storage</div>
-              <div className="text-xs text-slate-500 font-mono">SQLite (WAL Mode) · Database Table Indexes Active</div>
+              <div className="text-xs text-slate-500 font-mono">SQLite · Database Table Indexes Active</div>
             </div>
           </div>
           <div className="text-xs text-slate-600">
-            Initial Authorized CSE Student Roster: <span className="font-mono font-semibold text-slate-900">26UECSE0121 – 26UECSE0243</span>
+            Multi-Branch Academic Roll Number Validation · Example: <span className="font-mono font-semibold text-slate-900">26UECSE0220</span>
           </div>
         </div>
       </section>
     </div>
   );
 };
+

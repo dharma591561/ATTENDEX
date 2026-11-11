@@ -44,12 +44,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
           <p className="text-xs text-slate-500 mt-1">Real database telemetry, roster statistics, and application queues</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => onNavigate('admin-faculty')}
+            onClick={() => onNavigate('admin-students')}
             className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
           >
-            Review Applications ({stats?.pendingFacultyApplications ?? 0})
+            Student Applications ({stats?.pendingStudentApplications ?? 0} Pending)
+          </button>
+          <button
+            onClick={() => onNavigate('admin-faculty')}
+            className="px-4 py-2 text-xs font-semibold text-slate-900 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+          >
+            Faculty Applications ({stats?.pendingFacultyApplications ?? 0} Pending)
           </button>
           <button
             onClick={loadOverview}
@@ -69,40 +75,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
 
       {/* Database Statistics Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-        {/* Total Students */}
+        {/* Total Active Students */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
           <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span className="font-semibold text-slate-700">Enrolled Students</span>
+            <span className="font-semibold text-slate-700">Active Students</span>
             <Users className="w-4 h-4 text-blue-600" />
           </div>
           <div className="text-2xl font-bold font-mono tracking-tight text-slate-900 tabular-nums">
-            {loading ? '...' : stats?.totalStudents ?? 0}
+            {loading ? '...' : stats?.approvedStudents ?? stats?.totalStudents ?? 0}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Verified CSE roll numbers</p>
+          <p className="text-[11px] text-slate-500 mt-1">Approved student accounts</p>
         </div>
 
-        {/* Total Faculty Applications */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span className="font-semibold text-slate-700">Faculty Apps</span>
-            <BookOpen className="w-4 h-4 text-slate-600" />
-          </div>
-          <div className="text-2xl font-bold font-mono tracking-tight text-slate-900 tabular-nums">
-            {loading ? '...' : stats?.totalFacultyApplications ?? 0}
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">Total submitted submissions</p>
-        </div>
-
-        {/* Pending Applications */}
+        {/* Pending Student Applications */}
         <div className="bg-white rounded-xl border border-amber-200 bg-amber-50/20 p-5">
           <div className="flex items-center justify-between text-xs text-amber-800 mb-2">
-            <span className="font-semibold">Pending Review</span>
+            <span className="font-semibold">Pending Students</span>
             <Clock className="w-4 h-4 text-amber-600" />
+          </div>
+          <div className="text-2xl font-bold font-mono tracking-tight text-amber-900 tabular-nums">
+            {loading ? '...' : stats?.pendingStudentApplications ?? 0}
+          </div>
+          <p className="text-[11px] text-amber-700 mt-1">Student apps awaiting approval</p>
+        </div>
+
+        {/* Pending Faculty Applications */}
+        <div className="bg-white rounded-xl border border-amber-200 bg-amber-50/20 p-5">
+          <div className="flex items-center justify-between text-xs text-amber-800 mb-2">
+            <span className="font-semibold">Pending Faculty</span>
+            <BookOpen className="w-4 h-4 text-amber-600" />
           </div>
           <div className="text-2xl font-bold font-mono tracking-tight text-amber-900 tabular-nums">
             {loading ? '...' : stats?.pendingFacultyApplications ?? 0}
           </div>
-          <p className="text-[11px] text-amber-700 mt-1">Awaiting decision</p>
+          <p className="text-[11px] text-amber-700 mt-1">Faculty apps awaiting approval</p>
         </div>
 
         {/* Approved Faculty */}
@@ -124,9 +130,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
             <XCircle className="w-4 h-4 text-slate-400" />
           </div>
           <div className="text-2xl font-bold font-mono tracking-tight text-slate-700 tabular-nums">
-            {loading ? '...' : stats?.rejectedFaculty ?? 0}
+            {loading ? '...' : (stats?.rejectedStudents ?? 0) + (stats?.rejectedFaculty ?? 0)}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Declined applications</p>
+          <p className="text-[11px] text-slate-500 mt-1">Declined student & faculty apps</p>
         </div>
       </div>
 
@@ -138,23 +144,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
             <h2 className="text-sm font-bold text-slate-900 mb-3">Management Consoles</h2>
             <div className="space-y-2">
               <button
+                onClick={() => onNavigate('admin-students')}
+                className="w-full text-left p-3 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer"
+              >
+                <div>
+                  <div className="text-xs font-semibold text-slate-900">Student Applications & Directory</div>
+                  <div className="text-[11px] text-slate-500">Approve or reject student registrations & search roster</div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400" />
+              </button>
+
+              <button
                 onClick={() => onNavigate('admin-faculty')}
                 className="w-full text-left p-3 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer"
               >
                 <div>
                   <div className="text-xs font-semibold text-slate-900">Faculty Applications</div>
                   <div className="text-[11px] text-slate-500">Approve or reject professor applications</div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400" />
-              </button>
-
-              <button
-                onClick={() => onNavigate('admin-students')}
-                className="w-full text-left p-3 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <div className="text-xs font-semibold text-slate-900">Student Directory & Search</div>
-                  <div className="text-[11px] text-slate-500">Search by roll number or name</div>
                 </div>
                 <ArrowRight className="w-4 h-4 text-slate-400" />
               </button>

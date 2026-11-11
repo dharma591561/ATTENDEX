@@ -12,7 +12,12 @@ adminRouter.use(requireAuth, requireRole(['FOUNDER']));
 // 1. Overview Statistics
 adminRouter.get('/overview', (_req: Request, res: Response) => {
   try {
-    const totalStudents = (db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'STUDENT'").get() as any).count;
+    const totalStudents = (db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'STUDENT' AND status = 'ACTIVE'").get() as any).count;
+    const totalStudentApplications = (db.prepare("SELECT COUNT(*) as count FROM student_applications").get() as any).count;
+    const pendingStudentApplications = (db.prepare("SELECT COUNT(*) as count FROM student_applications WHERE status = 'PENDING'").get() as any).count;
+    const approvedStudents = (db.prepare("SELECT COUNT(*) as count FROM student_applications WHERE status = 'APPROVED'").get() as any).count;
+    const rejectedStudents = (db.prepare("SELECT COUNT(*) as count FROM student_applications WHERE status = 'REJECTED'").get() as any).count;
+
     const totalFacultyApplications = (db.prepare("SELECT COUNT(*) as count FROM faculty_applications").get() as any).count;
     const pendingFacultyApplications = (db.prepare("SELECT COUNT(*) as count FROM faculty_applications WHERE status = 'PENDING'").get() as any).count;
     const approvedFaculty = (db.prepare("SELECT COUNT(*) as count FROM faculty_applications WHERE status = 'APPROVED'").get() as any).count;
@@ -29,6 +34,10 @@ adminRouter.get('/overview', (_req: Request, res: Response) => {
     return res.json({
       stats: {
         totalStudents,
+        totalStudentApplications,
+        pendingStudentApplications,
+        approvedStudents,
+        rejectedStudents,
         totalFacultyApplications,
         pendingFacultyApplications,
         approvedFaculty,
@@ -59,9 +68,9 @@ adminRouter.get('/students', (req: Request, res: Response) => {
     const params: any[] = [];
 
     if (search) {
-      query += ` AND (sp.full_name LIKE ? OR sp.roll_number LIKE ? OR u.email LIKE ?)`;
+      query += ` AND (sp.full_name LIKE ? OR sp.roll_number LIKE ? OR u.email LIKE ? OR sp.branch LIKE ? OR sp.section LIKE ?)`;
       const term = `%${search}%`;
-      params.push(term, term, term);
+      params.push(term, term, term, term, term);
     }
 
     if (branch) {
@@ -84,14 +93,14 @@ adminRouter.get('/students', (req: Request, res: Response) => {
       FROM student_profiles sp
       JOIN users u ON sp.user_id = u.id
       WHERE 1=1
-      ${search ? ' AND (sp.full_name LIKE ? OR sp.roll_number LIKE ? OR u.email LIKE ?)' : ''}
+      ${search ? ' AND (sp.full_name LIKE ? OR sp.roll_number LIKE ? OR u.email LIKE ? OR sp.branch LIKE ? OR sp.section LIKE ?)' : ''}
       ${branch ? ' AND sp.branch = ?' : ''}
       ${section ? ' AND sp.section = ?' : ''}
     `;
     const countParams: any[] = [];
     if (search) {
       const term = `%${search}%`;
-      countParams.push(term, term, term);
+      countParams.push(term, term, term, term, term);
     }
     if (branch) countParams.push(branch.toUpperCase());
     if (section) countParams.push(section.toUpperCase());
@@ -106,6 +115,174 @@ adminRouter.get('/students', (req: Request, res: Response) => {
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Error querying students.' });
+  }
+});
+
+// 2b. Student Applications List, Filter & Search
+adminRouter.get('/student-applications', (req: Request, res: Response) => {
+  try {
+    const status = ((req.query.status as string) || 'ALL').toUpperCase();
+    const search = ((req.query.search as string) || '').trim();
+    const branch = ((req.query.branch as string) || '').trim();
+    const section = ((req.query.section as string) || '').trim();
+
+    let query = `
+      SELECT sa.*, u.email, u.is_email_verified, u.status as account_status,
+             reviewer.email as reviewer_email
+      FROM student_applications sa
+      JOIN users u ON sa.user_id = u.id
+      LEFT JOIN users reviewer ON sa.reviewed_by_user_id = reviewer.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (status !== 'ALL') {
+      query += ` AND sa.status = ?`;
+      params.push(status);
+    }
+
+    if (search) {
+      query += ` AND (sa.full_name LIKE ? OR sa.roll_number LIKE ? OR u.email LIKE ? OR sa.branch LIKE ? OR sa.section LIKE ?)`;
+      const term = `%${search}%`;
+      params.push(term, term, term, term, term);
+    }
+
+    if (branch) {
+      query += ` AND sa.branch = ?`;
+      params.push(branch.toUpperCase());
+    }
+
+    if (section) {
+      query += ` AND sa.section = ?`;
+      params.push(section.toUpperCase());
+    }
+
+    query += ` ORDER BY sa.created_at DESC`;
+
+    const applications = db.prepare(query).all(...params);
+    return res.json({ applications });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Error fetching student applications.' });
+  }
+});
+
+// 2c. Approve Student Application
+adminRouter.post('/student-applications/:id/approve', (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const application = db.prepare(`
+      SELECT * FROM student_applications WHERE id = ? OR user_id = ?
+    `).get(id, id) as any;
+
+    if (!application) {
+      return res.status(404).json({ error: 'Student application not found.' });
+    }
+
+    if (application.status === 'APPROVED') {
+      return res.status(400).json({ error: 'Student application is already approved.' });
+    }
+
+    const now = new Date().toISOString();
+    const reviewerId = req.user!.id;
+
+    const approveTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE student_applications
+        SET status = 'APPROVED', rejection_reason = NULL, reviewed_by_user_id = ?, reviewed_at = ?, updated_at = ?
+        WHERE id = ?
+      `).run(reviewerId, now, now, application.id);
+
+      db.prepare(`
+        UPDATE users
+        SET status = 'ACTIVE', updated_at = ?
+        WHERE id = ?
+      `).run(now, application.user_id);
+    });
+
+    approveTx();
+
+    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
+    logAuditEvent({
+      actorUserId: reviewerId,
+      action: 'STUDENT_APPLICATION_APPROVED',
+      targetUserId: application.user_id,
+      details: {
+        applicationId: application.id,
+        fullName: application.full_name,
+        rollNumber: application.roll_number,
+        branch: application.branch,
+        section: application.section,
+      },
+      ipAddress: ip,
+    });
+
+    return res.json({
+      success: true,
+      message: `Student application for ${application.full_name} (${application.roll_number}) has been approved. The student may now log in.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Error approving student application.' });
+  }
+});
+
+// 2d. Reject Student Application
+adminRouter.post('/student-applications/:id/reject', (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const application = db.prepare(`
+      SELECT * FROM student_applications WHERE id = ? OR user_id = ?
+    `).get(id, id) as any;
+
+    if (!application) {
+      return res.status(404).json({ error: 'Student application not found.' });
+    }
+
+    const now = new Date().toISOString();
+    const reviewerId = req.user!.id;
+    const rejectionReason = (reason || '').trim() || 'Student application did not meet enrollment verification criteria.';
+
+    const rejectTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE student_applications
+        SET status = 'REJECTED', rejection_reason = ?, reviewed_by_user_id = ?, reviewed_at = ?, updated_at = ?
+        WHERE id = ?
+      `).run(rejectionReason, reviewerId, now, now, application.id);
+
+      db.prepare(`
+        UPDATE users
+        SET status = 'REJECTED', updated_at = ?
+        WHERE id = ?
+      `).run(now, application.user_id);
+    });
+
+    rejectTx();
+
+    // Invalidate any potential sessions
+    invalidateAllUserSessions(application.user_id);
+
+    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress;
+    logAuditEvent({
+      actorUserId: reviewerId,
+      action: 'STUDENT_APPLICATION_REJECTED',
+      targetUserId: application.user_id,
+      details: {
+        applicationId: application.id,
+        fullName: application.full_name,
+        rollNumber: application.roll_number,
+        reason: rejectionReason,
+      },
+      ipAddress: ip,
+    });
+
+    return res.json({
+      success: true,
+      message: `Student application for ${application.full_name} (${application.roll_number}) was rejected.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Error rejecting student application.' });
   }
 });
 

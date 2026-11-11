@@ -169,6 +169,24 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       });
     }
 
+    // Check account status for student
+    if (user.role === 'STUDENT') {
+      if (user.status === 'PENDING') {
+        return res.status(403).json({
+          error: 'Your student application is currently pending administrator approval.',
+          status: 'PENDING',
+          userId: user.id,
+        });
+      }
+      if (user.status === 'REJECTED') {
+        const app = db.prepare('SELECT rejection_reason FROM student_applications WHERE user_id = ?').get(user.id) as any;
+        return res.status(403).json({
+          error: `Your student application has been rejected.${app?.rejection_reason ? ` Reason: ${app.rejection_reason}` : ''}`,
+          status: 'REJECTED',
+        });
+      }
+    }
+
     // Check account status for faculty
     if (user.role === 'FACULTY') {
       if (user.status === 'PENDING') {

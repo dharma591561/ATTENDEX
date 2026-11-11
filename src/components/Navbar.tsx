@@ -126,7 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                   currentView === 'admin-students' ? 'text-slate-900 font-semibold' : ''
                 }`}
               >
-                Students Directory
+                Student Applications
               </button>
               <button
                 onClick={() => onNavigate('admin-faculty')}

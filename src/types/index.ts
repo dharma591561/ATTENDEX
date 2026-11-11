@@ -51,6 +51,25 @@ export interface FacultyApplication {
   is_email_verified?: number;
 }
 
+export interface StudentApplication {
+  id: string;
+  user_id: string;
+  full_name: string;
+  roll_number: string;
+  branch: string;
+  section: string;
+  profile_photo_url: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejection_reason: string | null;
+  reviewed_by_user_id: string | null;
+  reviewer_email?: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  email?: string;
+  is_email_verified?: number;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -77,8 +96,13 @@ export interface AuditLog {
 
 export interface AdminStats {
   totalStudents: number;
+  totalStudentApplications?: number;
+  pendingStudentApplications?: number;
+  approvedStudents?: number;
+  rejectedStudents?: number;
   totalFacultyApplications: number;
   pendingFacultyApplications: number;
   approvedFaculty: number;
   rejectedFaculty: number;
 }
+

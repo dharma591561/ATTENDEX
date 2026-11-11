@@ -1,4 +1,4 @@
-import { User, StudentProfile, FacultyProfile, FacultyApplication, AdminStats, AuditLog } from '../types';
+import { User, StudentProfile, StudentApplication, FacultyProfile, FacultyApplication, AdminStats, AuditLog } from '../types';
 
 const SESSION_STORAGE_KEY = 'attendx_session_token';
 
@@ -110,16 +110,16 @@ export const api = {
   },
 
   students: {
-    register: async (payload: any) => {
-      const res = await request<{ success: boolean; user: User; sessionId: string; message: string }>('/api/students/register', {
+    register: async (payload: any) =>
+      request<{ success: boolean; status: string; message: string; application: StudentApplication }>('/api/students/register', {
         method: 'POST',
         body: JSON.stringify(payload),
-      });
-      if (res.sessionId) {
-        setStoredSessionToken(res.sessionId);
-      }
-      return res;
-    },
+      }),
+    getStatus: (payload: { email: string; rollNumber?: string; password?: string }) =>
+      request<{ application: StudentApplication }>('/api/students/application-status', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
     getProfile: () => request<{ profile: StudentProfile }>('/api/students/me'),
     updateProfile: (updates: { fullName?: string; bio?: string; phone?: string }) =>
       request<{ success: boolean; profile: StudentProfile }>('/api/students/me', {
@@ -182,6 +182,23 @@ export const api = {
       if (params.offset) query.set('offset', String(params.offset));
       return request<{ students: StudentProfile[]; total: number; limit: number; offset: number }>(`/api/admin/students?${query.toString()}`);
     },
+    getStudentApplications: (params: { status?: 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'; search?: string; branch?: string; section?: string } = {}) => {
+      const query = new URLSearchParams();
+      if (params.status) query.set('status', params.status);
+      if (params.search) query.set('search', params.search);
+      if (params.branch) query.set('branch', params.branch);
+      if (params.section) query.set('section', params.section);
+      return request<{ applications: StudentApplication[] }>(`/api/admin/student-applications?${query.toString()}`);
+    },
+    approveStudentApplication: (id: string) =>
+      request<{ success: boolean; message: string }>(`/api/admin/student-applications/${id}/approve`, {
+        method: 'POST',
+      }),
+    rejectStudentApplication: (id: string, reason?: string) =>
+      request<{ success: boolean; message: string }>(`/api/admin/student-applications/${id}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }),
     getApplications: (status: 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED' = 'ALL') =>
       request<{ applications: FacultyApplication[] }>(`/api/admin/faculty-applications?status=${status}`),
     approveApplication: (id: string) =>
@@ -206,3 +223,4 @@ export const api = {
     },
   },
 };
+

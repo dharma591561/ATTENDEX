@@ -60,6 +60,45 @@ export function initDatabase() {
     );
   `);
 
+  // 2b. Student Applications (Additive migration preserving existing ACTIVE student accounts)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS student_applications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      full_name TEXT NOT NULL,
+      roll_number TEXT UNIQUE NOT NULL COLLATE NOCASE,
+      branch TEXT NOT NULL,
+      section TEXT NOT NULL,
+      profile_photo_url TEXT,
+      status TEXT NOT NULL CHECK(status IN ('PENDING', 'APPROVED', 'REJECTED')),
+      rejection_reason TEXT,
+      reviewed_by_user_id TEXT REFERENCES users(id),
+      reviewed_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
+  // Backward-compatible backfill: ensure any pre-existing student in student_profiles has a matching student_applications record
+  db.exec(`
+    INSERT OR IGNORE INTO student_applications (
+      id, user_id, full_name, roll_number, branch, section, profile_photo_url, status, created_at, updated_at
+    )
+    SELECT
+      sp.id, sp.user_id, sp.full_name, sp.roll_number, sp.branch, sp.section, sp.profile_photo_url,
+      CASE
+        WHEN u.status = 'ACTIVE' THEN 'APPROVED'
+        WHEN u.status = 'REJECTED' THEN 'REJECTED'
+        ELSE 'PENDING'
+      END,
+      sp.created_at, sp.updated_at
+    FROM student_profiles sp
+    JOIN users u ON sp.user_id = u.id
+    WHERE NOT EXISTS (
+      SELECT 1 FROM student_applications sa WHERE sa.user_id = sp.user_id
+    );
+  `);
+
   // 3. Faculty Profiles
   db.exec(`
     CREATE TABLE IF NOT EXISTS faculty_profiles (

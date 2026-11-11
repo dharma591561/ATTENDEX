@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../api/client';
-import { useAuth } from '../context/AuthContext';
 import {
   GraduationCap,
   Mail,
@@ -13,7 +12,6 @@ import {
   Clock,
   Camera,
   Trash2,
-  ShieldCheck,
   Building,
   Layers,
 } from 'lucide-react';
@@ -23,7 +21,6 @@ interface StudentRegisterPageProps {
 }
 
 export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavigate }) => {
-  const { setUser } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form State
@@ -54,7 +51,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
   const [submitting, setSubmitting] = useState(false);
 
   // Confirmation state
-  const [registeredStudent, setRegisteredStudent] = useState<any | null>(null);
+  const [submittedApplication, setSubmittedApplication] = useState<any | null>(null);
 
   // Cooldown timer effect
   useEffect(() => {
@@ -65,22 +62,15 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  // Roll number live format validation helper
-  const getRollNumberValidation = (val: string) => {
+  // Roll number live format validation helper (branch-agnostic)
+  const getRollNumberValidation = (val: string): string | null => {
     if (!val) return null;
     const clean = val.trim().toUpperCase();
-    if (!clean.startsWith('26UECSE')) {
-      return 'Must start with prefix 26UECSE';
+    if (clean.length < 4 || clean.length > 24) {
+      return 'Roll number must be between 4 and 24 characters long (e.g. 26UECSE0220)';
     }
-    if (clean.length < 11) {
-      return 'Needs 4 trailing digits (e.g. 26UECSE0220)';
-    }
-    if (!/^26UECSE\d{4}$/.test(clean)) {
-      return 'Invalid format. Expected: 26UECSE followed by 4 digits';
-    }
-    const num = parseInt(clean.substring(7), 10);
-    if (num < 121 || num > 243) {
-      return `Roll number ${clean} is outside the permitted roster range (26UECSE0121 - 26UECSE0243)`;
+    if (!/^[A-Z0-9][A-Z0-9\-/]{2,22}[A-Z0-9]$/.test(clean) || !/\d/.test(clean)) {
+      return 'Roll number must contain only letters, digits, hyphens, or slashes, and include at least one digit (e.g. 26UECSE0220)';
     }
     return 'valid';
   };
@@ -173,7 +163,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
     }
   };
 
-  // Complete Registration
+  // Complete Registration Application
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -219,8 +209,12 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
         profilePhoto: profilePhoto || undefined,
       });
 
-      setUser(res.user);
-      setRegisteredStudent(res.user);
+      // Do NOT log in or activate the student automatically — account requires Founder approval
+      setSubmittedApplication({
+        ...res.application,
+        confirmationMessage:
+          res.message || 'Your student application has been submitted successfully and is awaiting administrator approval.',
+      });
     } catch (err: any) {
       setError(err.message || 'Registration failed.');
     } finally {
@@ -228,29 +222,29 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
     }
   };
 
-  // If student was just registered, render the Confirmation View
-  if (registeredStudent) {
-    const profile = registeredStudent.student_profile;
+  // If student application was just submitted, render the Pending Approval Confirmation View
+  if (submittedApplication) {
     return (
       <div className="min-h-[calc(100vh-4rem)] bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
         <div className="max-w-md w-full bg-white rounded-xl border border-slate-200 p-8 shadow-xs text-center">
-          <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-600">
-            <CheckCircle2 className="w-8 h-8" />
+          <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-600">
+            <Clock className="w-8 h-8" />
           </div>
 
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">Registration Confirmed</h2>
-          <p className="text-xs text-slate-500 mt-1 mb-6">
-            Your CLASSYNC student identity has been successfully registered and verified.
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">Application Submitted</h2>
+          <p className="text-xs text-slate-600 mt-2 mb-6 leading-relaxed">
+            {submittedApplication.confirmationMessage ||
+              'Your student application has been submitted successfully and is awaiting administrator approval.'}
           </p>
 
-          {/* Academic ID Card Preview */}
+          {/* Academic Application Summary Card */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 text-left mb-6">
             <div className="flex items-center gap-4 mb-4 pb-4 border-b border-slate-200">
               <div className="w-16 h-16 rounded-lg bg-slate-900 text-white flex items-center justify-center overflow-hidden shrink-0 border border-slate-300">
-                {profile?.profile_photo_url || photoPreview ? (
+                {submittedApplication.profile_photo_url || photoPreview ? (
                   <img
-                    src={profile?.profile_photo_url || photoPreview!}
-                    alt={profile?.full_name}
+                    src={submittedApplication.profile_photo_url || photoPreview!}
+                    alt={submittedApplication.full_name}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -258,11 +252,11 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
                 )}
               </div>
               <div className="overflow-hidden">
-                <h3 className="font-bold text-sm text-slate-900 truncate">{profile?.full_name}</h3>
-                <p className="font-mono text-xs font-semibold text-slate-700">{profile?.roll_number}</p>
-                <div className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-sm border border-emerald-200">
-                  <ShieldCheck className="w-3 h-3" />
-                  <span>Active Student</span>
+                <h3 className="font-bold text-sm text-slate-900 truncate">{submittedApplication.full_name}</h3>
+                <p className="font-mono text-xs font-semibold text-slate-700">{submittedApplication.roll_number}</p>
+                <div className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded-sm border border-amber-200">
+                  <Clock className="w-3 h-3" />
+                  <span>Pending Administrator Approval</span>
                 </div>
               </div>
             </div>
@@ -270,11 +264,13 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <span className="text-slate-400 block text-[11px]">Branch & Section</span>
-                <span className="font-semibold text-slate-800">{profile?.branch} — Sec {profile?.section}</span>
+                <span className="font-semibold text-slate-800">
+                  {submittedApplication.branch} — Sec {submittedApplication.section}
+                </span>
               </div>
               <div>
                 <span className="text-slate-400 block text-[11px]">Email</span>
-                <span className="font-medium text-slate-700 truncate block">{registeredStudent.email}</span>
+                <span className="font-medium text-slate-700 truncate block">{submittedApplication.email}</span>
               </div>
             </div>
           </div>
@@ -283,10 +279,10 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
           <div className="space-y-2">
             <button
               type="button"
-              onClick={() => onNavigate('student-dashboard')}
+              onClick={() => onNavigate('application-status')}
               className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-2"
             >
-              <span>Proceed to Student Dashboard</span>
+              <span>Check Application Status</span>
               <ArrowRight className="w-4 h-4" />
             </button>
             <button
@@ -308,11 +304,11 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
         <div className="mb-6">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
             <GraduationCap className="w-4 h-4 text-slate-700" />
-            <span>CSE Student Portal</span>
+            <span>Student Portal</span>
           </div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">Student Account Registration</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Permitted Initial CSE Roster Range: <span className="font-mono text-slate-800">26UECSE0121 – 26UECSE0243</span>
+            All student registrations require email verification and Founder Administrator approval before activation. Example roll number: <span className="font-mono text-slate-800">26UECSE0220</span>
           </p>
         </div>
 
@@ -372,7 +368,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
                 <p className="text-[11px] text-rose-600 mt-1">{rollValidation}</p>
               )}
               {rollValidation === 'valid' && (
-                <p className="text-[11px] text-emerald-600 mt-1 font-mono">Format & roster range verified</p>
+                <p className="text-[11px] text-emerald-600 mt-1 font-mono">Valid roll number format</p>
               )}
             </div>
 
@@ -386,10 +382,15 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
                   className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                 >
                   <option value="CSE">CSE (Computer Science)</option>
-                  <option value="ECE">ECE (Electronics)</option>
+                  <option value="ECE">ECE (Electronics & Comm.)</option>
+                  <option value="EEE">EEE (Electrical & Electronics)</option>
                   <option value="MECH">MECH (Mechanical)</option>
                   <option value="CIVIL">CIVIL (Civil)</option>
                   <option value="IT">IT (Information Tech)</option>
+                  <option value="AIML">AIML (AI & Machine Learning)</option>
+                  <option value="DS">DS (Data Science)</option>
+                  <option value="BIOTECH">BIOTECH (Biotechnology)</option>
+                  <option value="CHEM">CHEM (Chemical)</option>
                 </select>
               </div>
             </div>
@@ -407,6 +408,8 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
                   <option value="B">Section B</option>
                   <option value="C">Section C</option>
                   <option value="D">Section D</option>
+                  <option value="E">Section E</option>
+                  <option value="F">Section F</option>
                 </select>
               </div>
             </div>
@@ -575,7 +578,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
             className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:text-slate-600 rounded-lg transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-2 mt-4"
           >
             {submitting ? (
-              <span>Creating Student Account...</span>
+              <span>Submitting Student Application...</span>
             ) : (
               <>
                 <span>Complete Student Registration</span>
@@ -585,17 +588,30 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
           </button>
         </form>
 
-        <div className="mt-6 pt-4 border-t border-slate-100 text-center text-xs text-slate-500">
-          Already registered?{' '}
-          <button
-            type="button"
-            onClick={() => onNavigate('login')}
-            className="font-semibold text-slate-900 hover:underline cursor-pointer"
-          >
-            Sign into Student Portal
-          </button>
+        <div className="mt-6 pt-4 border-t border-slate-100 text-center text-xs text-slate-500 space-y-1">
+          <p>
+            Already registered?{' '}
+            <button
+              type="button"
+              onClick={() => onNavigate('login')}
+              className="font-semibold text-slate-900 hover:underline cursor-pointer"
+            >
+              Sign into Student Portal
+            </button>
+          </p>
+          <p>
+            Submitted an application?{' '}
+            <button
+              type="button"
+              onClick={() => onNavigate('application-status')}
+              className="text-slate-600 hover:text-slate-900 underline cursor-pointer"
+            >
+              Check Student Application Status
+            </button>
+          </p>
         </div>
       </div>
     </div>
   );
 };
+

@@ -12,8 +12,7 @@ import { db, initDatabase } from '../../server/db/database';
 // Ensure DB is initialized
 initDatabase();
 
-test('1. Roll Number Validation: correct format & within permitted initial roster range', () => {
-  // Valid within range 26UECSE0121 - 26UECSE0243
+test('1. Roll Number Validation: branch-agnostic format, whitespace trimming, and uppercase normalization', () => {
   const valid1 = validateRollNumber('26UECSE0121');
   assert.equal(valid1.valid, true);
   assert.equal(valid1.normalized, '26UECSE0121');
@@ -22,33 +21,36 @@ test('1. Roll Number Validation: correct format & within permitted initial roste
   assert.equal(valid2.valid, true);
   assert.equal(valid2.normalized, '26UECSE0220');
 
-  const valid3 = validateRollNumber('26UECSE0243');
+  // Outside old 0121-0243 range and across multiple branches/batches
+  const valid3 = validateRollNumber('26UECSE0500');
   assert.equal(valid3.valid, true);
-  assert.equal(valid3.normalized, '26UECSE0243');
+  assert.equal(valid3.normalized, '26UECSE0500');
+
+  const valid4 = validateRollNumber('26ueece0045');
+  assert.equal(valid4.valid, true);
+  assert.equal(valid4.normalized, '26UEECE0045');
+
+  const valid5 = validateRollNumber('25UEMECH0110');
+  assert.equal(valid5.valid, true);
+  assert.equal(valid5.normalized, '25UEMECH0110');
 });
 
-test('2. Roll Number Validation: rejects invalid formats and out-of-range numbers', () => {
-  // Wrong prefix
-  const invalid1 = validateRollNumber('25UECSE0150');
+test('2. Roll Number Validation: rejects invalid formats (too short, too long, special characters, or no digits)', () => {
+  // Too short (< 4 chars)
+  const invalid1 = validateRollNumber('AB1');
   assert.equal(invalid1.valid, false);
 
-  // Missing digits
-  const invalid2 = validateRollNumber('26UECSE12');
+  // Too long (> 24 chars)
+  const invalid2 = validateRollNumber('26UECSE00000000000000000001');
   assert.equal(invalid2.valid, false);
 
-  // Non-numeric suffix
-  const invalid3 = validateRollNumber('26UECSEABCD');
+  // No numeric digits at all
+  const invalid3 = validateRollNumber('UECSEABCD');
   assert.equal(invalid3.valid, false);
 
-  // Below range (0120 < 0121)
-  const outOfRangeLow = validateRollNumber('26UECSE0120');
-  assert.equal(outOfRangeLow.valid, false);
-  assert.match(outOfRangeLow.error!, /outside the permitted initial roster range/);
-
-  // Above range (0244 > 0243)
-  const outOfRangeHigh = validateRollNumber('26UECSE0244');
-  assert.equal(outOfRangeHigh.valid, false);
-  assert.match(outOfRangeHigh.error!, /outside the permitted initial roster range/);
+  // Invalid special characters
+  const invalid4 = validateRollNumber('26UECSE@0220!');
+  assert.equal(invalid4.valid, false);
 });
 
 test('3. OTP Service: Generates 6-digit numeric OTP and enforces single-use & verification', () => {
@@ -209,11 +211,12 @@ test('8. Verification Grant Lifecycle: OTP verified produces grant, grant cannot
   db.prepare('DELETE FROM email_verification_otps WHERE email = ?').run(testEmail);
 });
 
-test('9. Student Registration Flow: OTP -> Grant -> Atomic DB Insertion -> Single Grant Consumption', async () => {
+test('9. Student Registration & Founder Approval Flow: OTP -> Grant -> PENDING Application -> Founder Approval', async () => {
   const studentEmail = `student_e2e_${Date.now()}@university.edu`;
-  const rollNumber = '26UECSE0225';
+  const rollNumber = '26UEECE0412';
 
   // Ensure clean state
+  db.prepare('DELETE FROM student_applications WHERE roll_number = ?').run(rollNumber);
   db.prepare('DELETE FROM student_profiles WHERE roll_number = ?').run(rollNumber);
   db.prepare('DELETE FROM users WHERE email = ?').run(studentEmail);
 
@@ -227,9 +230,10 @@ test('9. Student Registration Flow: OTP -> Grant -> Atomic DB Insertion -> Singl
   const grant = createVerificationGrant(studentEmail, 'STUDENT_REGISTRATION');
   assert.ok(grant.grantToken);
 
-  // 3. Execute atomic registration transaction
+  // 3. Execute atomic registration transaction creating PENDING user & student_applications row
   const userId = `student-user-${Date.now()}`;
   const profileId = `student-prof-${Date.now()}`;
+  const applicationId = `student-app-${Date.now()}`;
   const passwordHash = await hashPassword('StudentPassword123!');
   const now = new Date().toISOString();
 
@@ -241,33 +245,62 @@ test('9. Student Registration Flow: OTP -> Grant -> Atomic DB Insertion -> Singl
 
     db.prepare(`
       INSERT INTO users (id, email, password_hash, role, status, is_email_verified, created_at, updated_at)
-      VALUES (?, ?, ?, 'STUDENT', 'ACTIVE', 1, ?, ?)
+      VALUES (?, ?, ?, 'STUDENT', 'PENDING', 1, ?, ?)
     `).run(userId, studentEmail, passwordHash, now, now);
 
     db.prepare(`
       INSERT INTO student_profiles (id, user_id, full_name, roll_number, branch, section, created_at, updated_at)
-      VALUES (?, ?, 'Verified Student', ?, 'CSE', 'A', ?, ?)
+      VALUES (?, ?, 'Pending ECE Student', ?, 'ECE', 'C', ?, ?)
     `).run(profileId, userId, rollNumber, now, now);
+
+    db.prepare(`
+      INSERT INTO student_applications (id, user_id, full_name, roll_number, branch, section, status, created_at, updated_at)
+      VALUES (?, ?, 'Pending ECE Student', ?, 'ECE', 'C', 'PENDING', ?, ?)
+    `).run(applicationId, userId, rollNumber, now, now);
   });
 
   tx();
 
-  // 4. Confirm database records created
+  // 4. Confirm database records created with PENDING status
   const createdUser = db.prepare('SELECT id, role, status, is_email_verified FROM users WHERE id = ?').get(userId) as any;
   assert.ok(createdUser);
   assert.equal(createdUser.role, 'STUDENT');
-  assert.equal(createdUser.status, 'ACTIVE');
+  assert.equal(createdUser.status, 'PENDING');
   assert.equal(createdUser.is_email_verified, 1);
 
-  const createdProfile = db.prepare('SELECT roll_number, branch FROM student_profiles WHERE user_id = ?').get(userId) as any;
-  assert.ok(createdProfile);
-  assert.equal(createdProfile.roll_number, rollNumber);
+  const createdApp = db.prepare('SELECT status, roll_number, branch, section FROM student_applications WHERE id = ?').get(applicationId) as any;
+  assert.ok(createdApp);
+  assert.equal(createdApp.status, 'PENDING');
+  assert.equal(createdApp.roll_number, rollNumber);
+  assert.equal(createdApp.branch, 'ECE');
+  assert.equal(createdApp.section, 'C');
 
-  // 5. Attempting to reuse the consumed grant fails
+  // 5. Simulate Founder Approval -> transitions application to APPROVED and user to ACTIVE
+  const founder = db.prepare("SELECT id FROM users WHERE role = 'FOUNDER'").get() as any;
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE student_applications
+      SET status = 'APPROVED', reviewed_by_user_id = ?, reviewed_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(founder?.id || null, now, now, applicationId);
+
+    db.prepare(`
+      UPDATE users SET status = 'ACTIVE', updated_at = ? WHERE id = ?
+    `).run(now, userId);
+  })();
+
+  const approvedUser = db.prepare('SELECT status FROM users WHERE id = ?').get(userId) as any;
+  assert.equal(approvedUser.status, 'ACTIVE');
+
+  const approvedApp = db.prepare('SELECT status FROM student_applications WHERE id = ?').get(applicationId) as any;
+  assert.equal(approvedApp.status, 'APPROVED');
+
+  // 6. Attempting to reuse the consumed grant fails
   const reuseAttempt = validateAndConsumeGrant(grant.grantToken, studentEmail, 'STUDENT_REGISTRATION');
   assert.equal(reuseAttempt.valid, false);
 
   // Clean up
+  db.prepare('DELETE FROM student_applications WHERE id = ?').run(applicationId);
   db.prepare('DELETE FROM student_profiles WHERE roll_number = ?').run(rollNumber);
   db.prepare('DELETE FROM users WHERE id = ?').run(userId);
   db.prepare('DELETE FROM email_verification_grants WHERE email = ?').run(studentEmail);
