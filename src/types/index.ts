@@ -106,3 +106,179 @@ export interface AdminStats {
   rejectedFaculty: number;
 }
 
+export interface AcademicBranchSectionConfig {
+  id: string;
+  section: string;
+  isEnabled: boolean;
+  studentCount: number;
+}
+
+export interface AcademicBranchConfig {
+  id: string;
+  code: string;
+  name: string;
+  displayOrder: number;
+  isActive: boolean;
+  sections: AcademicBranchSectionConfig[];
+  enabledSections?: string[];
+  totalStudents: number;
+}
+
+export interface GeofenceConfig {
+  campusName: string;
+  latitude: number | null;
+  longitude: number | null;
+  radiusMeters: number;
+  accuracyToleranceMeters: number;
+  maxAllowedAccuracyMeters: number;
+  gpsEnforcementEnabled: boolean;
+  demoModeEnabled: boolean;
+  isBoundaryConfigured: boolean;
+  updatedAt?: string;
+}
+
+export interface AttendanceSessionInfo {
+  id: string;
+  facultyUserId: string;
+  facultyName: string;
+  facultyEmail?: string;
+  branchId?: string;
+  branch: string;
+  section: string;
+  sessionDate: string;
+  subjectName: string;
+  periodNumber: string | null;
+  startTime: string;
+  endTime: string;
+  method: 'MANUAL' | 'QR';
+  status: 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'SUBMITTED';
+  qrDurationMinutes?: number | null;
+  qrRefreshIntervalSeconds?: number | null;
+  qrStartedAtMs?: number | null;
+  qrExpiresAtMs?: number | null;
+  remainingSeconds?: number;
+  gpsVerificationMode?: string | null;
+  submittedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  canEdit: boolean;
+  totalStudents?: number;
+  presentCount?: number;
+  absentCount?: number;
+  unmarkedCount?: number;
+}
+
+export interface AttendanceRosterEntry {
+  id: string;
+  serialNumber: number;
+  studentUserId: string;
+  studentProfileId: string;
+  rollNumber: string;
+  shortRollNumber: string;
+  isShortRollAmbiguous: boolean;
+  fullName: string;
+  status: 'PRESENT' | 'ABSENT' | 'UNMARKED';
+  source: 'ROSTER_INIT' | 'MANUAL' | 'QR' | 'CORRECTION';
+  verificationMode?: string | null;
+  distanceMeters?: number | null;
+  recordedAt: string;
+  updatedAt: string;
+}
+
+export interface DailyReportPeriod {
+  sessionId: string;
+  serialNumber: number;
+  startTime: string;
+  endTime: string;
+  timeRange: string;
+  subjectName: string;
+  periodNumber: string | null;
+  method: 'MANUAL' | 'QR';
+  facultyUserId: string;
+  facultyName: string;
+  canEdit: boolean;
+  totalStudents: number;
+  presentCount: number;
+  absentCount: number;
+  absentShortRolls: string[];
+  absentShortRollsText: string;
+  absentStudentsDetailed: Array<{
+    studentUserId: string;
+    fullName: string;
+    rollNumber: string;
+    shortRollNumber: string;
+  }>;
+  hasAmbiguousShortRolls: boolean;
+}
+
+export interface ActiveStudentQrSession {
+  sessionId: string;
+  branch: string;
+  section: string;
+  sessionDate: string;
+  subjectName: string;
+  periodNumber: string | null;
+  startTime: string;
+  endTime: string;
+  facultyName: string;
+  expiresAtMs: number;
+  remainingSeconds: number;
+  myStatus: 'PRESENT' | 'ABSENT' | 'UNMARKED';
+  myRecordedAt: string | null;
+  gpsEnforcementEnabled: boolean;
+  demoModeEnabled: boolean;
+  campusName: string;
+}
+
+export interface StudentAttendanceHistoryItem {
+  sessionId: string;
+  sessionDate: string;
+  subjectName: string;
+  periodNumber: string | null;
+  startTime: string;
+  endTime: string;
+  method: 'MANUAL' | 'QR';
+  facultyName: string;
+  status: 'PRESENT' | 'ABSENT' | 'UNMARKED';
+  source: string;
+  verificationMode: string | null;
+  updatedAt: string;
+}
+
+
+export interface ActiveStudentQrSession {
+  sessionId: string;
+  branch: string;
+  section: string;
+  sessionDate: string;
+  subjectName: string;
+  periodNumber: string | null;
+  startTime: string;
+  endTime: string;
+  facultyName: string;
+  expiresAtMs: number;
+  remainingSeconds: number;
+  myStatus: 'PRESENT' | 'ABSENT' | 'UNMARKED';
+  myRecordedAt: string | null;
+  gpsEnforcementEnabled: boolean;
+  demoModeEnabled: boolean;
+  campusName: string;
+}
+
+export interface StudentAttendanceHistoryItem {
+  sessionId: string;
+  sessionDate: string;
+  subjectName: string;
+  periodNumber: string | null;
+  startTime: string;
+  endTime: string;
+  method: 'MANUAL' | 'QR';
+  facultyName: string;
+  status: 'PRESENT' | 'ABSENT' | 'UNMARKED';
+  source: string;
+  verificationMode: string | null;
+  updatedAt: string;
+}
+
+
+

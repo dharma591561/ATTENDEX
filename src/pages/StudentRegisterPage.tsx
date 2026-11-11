@@ -27,10 +27,51 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
   const [fullName, setFullName] = useState('');
   const [rollNumber, setRollNumber] = useState('');
   const [branch, setBranch] = useState('CSE');
-  const [section, setSection] = useState('A');
+  const [section, setSection] = useState('1');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Dynamic Official Branches & Numeric Sections
+  const [academicBranches, setAcademicBranches] = useState<
+    Array<{ id: string; code: string; name: string; enabledSections: string[]; allSections: string[] }>
+  >([
+    { id: '1', code: 'CSE_AIML', name: 'CSE (AI & ML)', enabledSections: ['1', '2'], allSections: ['1', '2', '3'] },
+    { id: '2', code: 'CSE', name: 'CSE', enabledSections: ['1', '2'], allSections: ['1', '2', '3'] },
+    { id: '3', code: 'ECE', name: 'ECE', enabledSections: ['1', '2'], allSections: ['1', '2', '3'] },
+    { id: '4', code: 'MECH', name: 'MECH', enabledSections: [], allSections: ['1', '2', '3'] },
+    { id: '5', code: 'CSE_CSDS', name: 'CSE (CS & DS)', enabledSections: [], allSections: ['1', '2', '3'] },
+    { id: '6', code: 'MECH_ROBOTICS', name: 'MECH-ROBOTICS', enabledSections: [], allSections: ['1', '2', '3'] },
+    { id: '7', code: 'EEE', name: 'EEE', enabledSections: [], allSections: ['1', '2', '3'] },
+    { id: '8', code: 'CIVIL', name: 'CIVIL', enabledSections: [], allSections: ['1', '2', '3'] },
+    { id: '9', code: 'CHEMICAL', name: 'CHEMICAL', enabledSections: [], allSections: ['1', '2', '3'] },
+    { id: '10', code: 'ECE_VLSI', name: 'ECE-VLSI', enabledSections: [], allSections: ['1', '2', '3'] },
+  ]);
+
+  useEffect(() => {
+    api.attendance
+      .getAcademicStructure()
+      .then((res) => {
+        if (res?.branches?.length) {
+          setAcademicBranches(res.branches);
+        }
+      })
+      .catch(() => {
+        // Fallback to seeded defaults
+      });
+  }, []);
+
+  const currentBranchMeta = academicBranches.find((b) => b.name === branch);
+  const selectableSections =
+    currentBranchMeta && currentBranchMeta.enabledSections && currentBranchMeta.enabledSections.length > 0
+      ? currentBranchMeta.enabledSections
+      : ['1', '2', '3'];
+
+  useEffect(() => {
+    if (!selectableSections.includes(section)) {
+      setSection(selectableSections[0] || '1');
+    }
+  }, [branch, selectableSections, section]);
 
   // Profile Photo (Optional)
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
@@ -343,7 +384,7 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
             </div>
           </div>
 
-          {/* 2. Roll Number & Academic Branch & Section */}
+          {/* 2. Roll Number & Academic Branch & Numeric Section */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="sm:col-span-1">
               <label className="block text-xs font-semibold text-slate-700 mb-1">Roll Number *</label>
@@ -381,22 +422,17 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
                   onChange={(e) => setBranch(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                 >
-                  <option value="CSE">CSE (Computer Science)</option>
-                  <option value="ECE">ECE (Electronics & Comm.)</option>
-                  <option value="EEE">EEE (Electrical & Electronics)</option>
-                  <option value="MECH">MECH (Mechanical)</option>
-                  <option value="CIVIL">CIVIL (Civil)</option>
-                  <option value="IT">IT (Information Tech)</option>
-                  <option value="AIML">AIML (AI & Machine Learning)</option>
-                  <option value="DS">DS (Data Science)</option>
-                  <option value="BIOTECH">BIOTECH (Biotechnology)</option>
-                  <option value="CHEM">CHEM (Chemical)</option>
+                  {academicBranches.map((b) => (
+                    <option key={b.id || b.name} value={b.name}>
+                      {b.name}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Section *</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Section (Numeric) *</label>
               <div className="relative">
                 <Layers className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
                 <select
@@ -404,12 +440,11 @@ export const StudentRegisterPage: React.FC<StudentRegisterPageProps> = ({ onNavi
                   onChange={(e) => setSection(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                 >
-                  <option value="A">Section A</option>
-                  <option value="B">Section B</option>
-                  <option value="C">Section C</option>
-                  <option value="D">Section D</option>
-                  <option value="E">Section E</option>
-                  <option value="F">Section F</option>
+                  {selectableSections.map((sec) => (
+                    <option key={sec} value={sec}>
+                      Section {sec}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

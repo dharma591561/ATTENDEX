@@ -166,6 +166,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
               </button>
 
               <button
+                onClick={() => onNavigate('admin-attendance')}
+                className="w-full text-left p-3 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer"
+              >
+                <div>
+                  <div className="text-xs font-semibold text-slate-900">Attendance Console & Daily Reports</div>
+                  <div className="text-[11px] text-slate-500">Take attendance, edit day-wise absentees, & export PDF reports</div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400" />
+              </button>
+
+              <button
+                onClick={() => onNavigate('admin-academic')}
+                className="w-full text-left p-3 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer"
+              >
+                <div>
+                  <div className="text-xs font-semibold text-slate-900">Branches, Sections & Campus Geofence</div>
+                  <div className="text-[11px] text-slate-500">Configure 10 official branches, sections 1–3, GPS boundary & Demo Mode</div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400" />
+              </button>
+
+              <button
                 onClick={() => onNavigate('admin-audit')}
                 className="w-full text-left p-3 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer"
               >

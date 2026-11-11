@@ -213,12 +213,16 @@ export const FacultyApplyPage: React.FC<FacultyApplyPageProps> = ({ onNavigate }
                   onChange={(e) => setDepartment(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                 >
-                  <option value="Computer Science & Engineering">Computer Science & Engineering</option>
-                  <option value="Electronics & Communication">Electronics & Communication</option>
-                  <option value="Mechanical Engineering">Mechanical Engineering</option>
-                  <option value="Civil Engineering">Civil Engineering</option>
-                  <option value="Mathematics & Computing">Mathematics & Computing</option>
-                  <option value="Applied Physics">Applied Physics</option>
+                  <option value="CSE (AI & ML)">CSE (AI & ML)</option>
+                  <option value="CSE">CSE (Computer Science & Engineering)</option>
+                  <option value="ECE">ECE (Electronics & Communication)</option>
+                  <option value="MECH">MECH (Mechanical Engineering)</option>
+                  <option value="CSE (CS & DS)">CSE (CS & DS)</option>
+                  <option value="MECH-ROBOTICS">MECH-ROBOTICS</option>
+                  <option value="EEE">EEE (Electrical & Electronics)</option>
+                  <option value="CIVIL">CIVIL (Civil Engineering)</option>
+                  <option value="CHEMICAL">CHEMICAL (Chemical Engineering)</option>
+                  <option value="ECE-VLSI">ECE-VLSI</option>
                 </select>
               </div>
             </div>

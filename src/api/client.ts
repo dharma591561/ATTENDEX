@@ -222,5 +222,219 @@ export const api = {
       return request<{ logs: AuditLog[]; total: number; limit: number; offset: number }>(`/api/admin/audit-logs?${query.toString()}`);
     },
   },
+
+  attendance: {
+    getAcademicStructure: () =>
+      request<{ branches: any[]; allowedSections: string[] }>('/api/attendance/academic-structure'),
+
+    getGeofenceStatus: () =>
+      request<{ geofence: any }>('/api/attendance/geofence-status'),
+
+    // Founder-only Academic & Geofence Configuration
+    getAdminAcademicConfig: () =>
+      request<{ branches: any[]; legacyStudents: any[] }>('/api/attendance/admin/academic-config'),
+    createBranch: (payload: { name: string; enabledSections?: string[] }) =>
+      request<{ success: boolean; message: string }>('/api/attendance/admin/academic-branches', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    updateBranch: (id: string, payload: { name?: string; isActive?: boolean }) =>
+      request<{ success: boolean; message: string }>(`/api/attendance/admin/academic-branches/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    toggleBranchSection: (branchId: string, payload: { section: string; isEnabled: boolean }) =>
+      request<{ success: boolean; message: string }>(`/api/attendance/admin/academic-branches/${branchId}/sections`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    updateStudentAcademic: (userId: string, payload: { branch: string; section: string }) =>
+      request<{ success: boolean; message: string }>(`/api/attendance/admin/students/${userId}/academic`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    updateGeofence: (payload: {
+      campusName?: string;
+      latitude?: number | null;
+      longitude?: number | null;
+      radiusMeters?: number;
+      accuracyToleranceMeters?: number;
+      maxAllowedAccuracyMeters?: number;
+      gpsEnforcementEnabled?: boolean;
+      demoModeEnabled?: boolean;
+    }) =>
+      request<{ success: boolean; message: string; geofence: any }>('/api/attendance/admin/geofence', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
+
+    // Faculty & Founder Attendance Sessions
+    getRosterPreview: (params: { branch: string; section: string; date?: string; startTime?: string; endTime?: string }) => {
+      const q = new URLSearchParams();
+      q.set('branch', params.branch);
+      q.set('section', params.section);
+      if (params.date) q.set('date', params.date);
+      if (params.startTime) q.set('startTime', params.startTime);
+      if (params.endTime) q.set('endTime', params.endTime);
+      return request<{
+        branch: string;
+        branchId: string | null;
+        section: string;
+        totalStudents: number;
+        hasAmbiguousShortRolls: boolean;
+        students: any[];
+        overlapWarnings: any[];
+      }>(`/api/attendance/roster-preview?${q.toString()}`);
+    },
+    createSession: (payload: {
+      branch: string;
+      section: string;
+      sessionDate: string;
+      subjectName: string;
+      periodNumber?: string;
+      startTime: string;
+      endTime: string;
+      method: 'MANUAL' | 'QR';
+      qrDurationMinutes?: number;
+      qrRefreshIntervalSeconds?: number;
+    }) =>
+      request<{ success: boolean; resumed: boolean; sessionId: string; rosterCount?: number; message: string }>(
+        '/api/attendance/sessions',
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }
+      ),
+    getSession: (sessionId: string) =>
+      request<{
+        session: any;
+        counts: { total: number; present: number; absent: number; unmarked: number };
+        entries: any[];
+        corrections: any[];
+      }>(`/api/attendance/sessions/${sessionId}`),
+    getQrToken: (sessionId: string) =>
+      request<{
+        active: boolean;
+        status: string;
+        windowIndex?: number;
+        secondsUntilNextRefresh: number;
+        secondsUntilSessionExpiry: number;
+        qrToken: string | null;
+        qrDataUrl: string | null;
+        counts: { total: number; present: number; absent: number; unmarked: number };
+        geofenceMode?: string;
+      }>(`/api/attendance/sessions/${sessionId}/qr-token`),
+    endQrSession: (sessionId: string) =>
+      request<{ success: boolean; message: string }>(`/api/attendance/sessions/${sessionId}/end-qr`, {
+        method: 'POST',
+      }),
+    updateSessionEntries: (
+      sessionId: string,
+      updates: Array<{ studentUserId: string; status: 'PRESENT' | 'ABSENT' | 'UNMARKED' }>,
+      reason?: string
+    ) =>
+      request<{ success: boolean; updatedCount: number; message: string }>(
+        `/api/attendance/sessions/${sessionId}/entries`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ updates, reason }),
+        }
+      ),
+    submitSession: (sessionId: string, confirmMarkUnmarkedAbsent: boolean = false) =>
+      request<{ success: boolean; message: string }>(`/api/attendance/sessions/${sessionId}/submit`, {
+        method: 'POST',
+        body: JSON.stringify({ confirmMarkUnmarkedAbsent }),
+      }),
+    reopenSession: (sessionId: string) =>
+      request<{ success: boolean; message: string }>(`/api/attendance/sessions/${sessionId}/reopen`, {
+        method: 'POST',
+      }),
+
+    // Daily Reports & Direct Absentee Editing
+    getDailyReport: (params: { branch: string; section: string; date: string }) => {
+      const q = new URLSearchParams();
+      q.set('branch', params.branch);
+      q.set('section', params.section);
+      q.set('date', params.date);
+      return request<{
+        institutionName: string;
+        branch: string;
+        section: string;
+        date: string;
+        totalReportedSessions: number;
+        generatedAt: string;
+        periods: any[];
+      }>(`/api/attendance/daily-report?${q.toString()}`);
+    },
+    updateDailyReportAbsentees: (sessionId: string, absentRollNumbersInput: string, reason?: string) =>
+      request<{
+        success: boolean;
+        changesCount: number;
+        absentCount: number;
+        presentCount: number;
+        absentShortRolls: string[];
+        absentShortRollsText: string;
+        message: string;
+      }>(`/api/attendance/daily-report/${sessionId}/absentees`, {
+        method: 'PUT',
+        body: JSON.stringify({ absentRollNumbersInput, reason }),
+      }),
+
+    // History
+    getHistory: (params: {
+      branch?: string;
+      section?: string;
+      date?: string;
+      method?: string;
+      status?: string;
+      mineOnly?: boolean;
+    } = {}) => {
+      const q = new URLSearchParams();
+      if (params.branch) q.set('branch', params.branch);
+      if (params.section) q.set('section', params.section);
+      if (params.date) q.set('date', params.date);
+      if (params.method) q.set('method', params.method);
+      if (params.status) q.set('status', params.status);
+      if (params.mineOnly) q.set('mineOnly', 'true');
+      return request<{ sessions: any[] }>(`/api/attendance/history?${q.toString()}`);
+    },
+
+    // Student Attendance & QR Scanning
+    getStudentOverview: () =>
+      request<{
+        activeQrSessions: any[];
+        summary: {
+          totalSessions: number;
+          presentCount: number;
+          absentCount: number;
+          attendancePercentage: number | null;
+        };
+        history: any[];
+      }>('/api/attendance/student/overview'),
+    scanQr: (payload: {
+      qrToken: string;
+      sessionId?: string;
+      location?: {
+        latitude: number | null;
+        longitude: number | null;
+        accuracy: number | null;
+        timestamp: number | null;
+      } | null;
+    }) =>
+      request<{
+        success: boolean;
+        alreadyRecorded: boolean;
+        status: string;
+        subjectName: string;
+        verificationMode?: string;
+        distanceMeters?: number | null;
+        recordedAt: string;
+        message: string;
+      }>('/api/attendance/student/scan-qr', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+  },
 };
+
 

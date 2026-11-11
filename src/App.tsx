@@ -18,12 +18,14 @@ import { StudentProfilePage } from './pages/student/StudentProfilePage';
 // Faculty Pages
 import { FacultyDashboard } from './pages/faculty/FacultyDashboard';
 import { FacultyProfilePage } from './pages/faculty/FacultyProfilePage';
+import { AttendanceManagementPage } from './pages/faculty/AttendanceManagementPage';
 
 // Admin Pages
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminStudentsPage } from './pages/admin/AdminStudentsPage';
 import { AdminFacultyPage } from './pages/admin/AdminFacultyPage';
 import { AdminAuditLogsPage } from './pages/admin/AdminAuditLogsPage';
+import { AdminAcademicConfigPage } from './pages/admin/AdminAcademicConfigPage';
 
 function MainRouter() {
   const { user, loading } = useAuth();
@@ -62,7 +64,7 @@ function MainRouter() {
       setCurrentView('login');
       return;
     }
-    if (view.startsWith('faculty-') && view !== 'faculty-apply' && (!user || user.role !== 'FACULTY')) {
+    if (view.startsWith('faculty-') && view !== 'faculty-apply' && (!user || (user.role !== 'FACULTY' && user.role !== 'FOUNDER'))) {
       setCurrentView('login');
       return;
     }
@@ -101,6 +103,8 @@ function MainRouter() {
         return <FacultyDashboard onNavigate={navigate} />;
       case 'faculty-profile':
         return <FacultyProfilePage onNavigate={navigate} />;
+      case 'faculty-attendance':
+        return <AttendanceManagementPage onNavigate={navigate} />;
 
       // Admin views
       case 'admin-dashboard':
@@ -111,6 +115,10 @@ function MainRouter() {
         return <AdminFacultyPage onNavigate={navigate} />;
       case 'admin-audit':
         return <AdminAuditLogsPage onNavigate={navigate} />;
+      case 'admin-academic':
+        return <AdminAcademicConfigPage onNavigate={navigate} />;
+      case 'admin-attendance':
+        return <AttendanceManagementPage onNavigate={navigate} />;
 
       default:
         return <LandingPage onNavigate={navigate} />;

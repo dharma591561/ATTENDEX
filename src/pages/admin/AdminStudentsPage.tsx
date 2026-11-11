@@ -44,7 +44,23 @@ export const AdminStudentsPage: React.FC<AdminStudentsPageProps> = ({ onNavigate
 
   // Selected student for details modal
   const [selectedStudent, setSelectedStudent] = useState<StudentProfile | null>(null);
+  const [editBranch, setEditBranch] = useState('CSE');
+  const [editSection, setEditSection] = useState('1');
+  const [academicSavedMsg, setAcademicSavedMsg] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+
+  const officialBranches = [
+    'CSE (AI & ML)',
+    'CSE',
+    'ECE',
+    'MECH',
+    'CSE (CS & DS)',
+    'MECH-ROBOTICS',
+    'EEE',
+    'CIVIL',
+    'CHEMICAL',
+    'ECE-VLSI',
+  ];
 
   useEffect(() => {
     if (activeTab === 'APPLICATIONS') {
@@ -135,6 +151,33 @@ export const AdminStudentsPage: React.FC<AdminStudentsPageProps> = ({ onNavigate
       }
     } catch (err: any) {
       setError(err.message || 'Error updating student status');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleOpenStudentDetails = (student: StudentProfile) => {
+    setSelectedStudent(student);
+    setEditBranch(student.branch || 'CSE');
+    setEditSection(['1', '2', '3'].includes(student.section) ? student.section : '1');
+    setAcademicSavedMsg(null);
+  };
+
+  const handleSaveStudentAcademic = async () => {
+    if (!selectedStudent || !selectedStudent.user_id) return;
+    setActionLoading(true);
+    setError(null);
+    setAcademicSavedMsg(null);
+    try {
+      await api.attendance.updateStudentAcademic(selectedStudent.user_id, {
+        branch: editBranch,
+        section: editSection,
+      });
+      setSelectedStudent({ ...selectedStudent, branch: editBranch, section: editSection });
+      setAcademicSavedMsg(`Updated to ${editBranch} — Section ${editSection}`);
+      await loadStudents();
+    } catch (err: any) {
+      setError(err.message || 'Error updating student branch & section.');
     } finally {
       setActionLoading(false);
     }
@@ -238,16 +281,11 @@ export const AdminStudentsPage: React.FC<AdminStudentsPageProps> = ({ onNavigate
                   className="px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                 >
                   <option value="">All Branches</option>
-                  <option value="CSE">CSE</option>
-                  <option value="ECE">ECE</option>
-                  <option value="EEE">EEE</option>
-                  <option value="MECH">MECH</option>
-                  <option value="CIVIL">CIVIL</option>
-                  <option value="IT">IT</option>
-                  <option value="AIML">AIML</option>
-                  <option value="DS">DS</option>
-                  <option value="BIOTECH">BIOTECH</option>
-                  <option value="CHEM">CHEM</option>
+                  {officialBranches.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
                 </select>
 
                 <select
@@ -256,12 +294,10 @@ export const AdminStudentsPage: React.FC<AdminStudentsPageProps> = ({ onNavigate
                   className="px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                 >
                   <option value="">All Sections</option>
-                  <option value="A">Section A</option>
-                  <option value="B">Section B</option>
-                  <option value="C">Section C</option>
-                  <option value="D">Section D</option>
-                  <option value="E">Section E</option>
-                  <option value="F">Section F</option>
+                  <option value="1">Section 1</option>
+                  <option value="2">Section 2</option>
+                  <option value="3">Section 3</option>
+                  <option value="A">Legacy Section A</option>
                 </select>
 
                 <button
@@ -418,16 +454,11 @@ export const AdminStudentsPage: React.FC<AdminStudentsPageProps> = ({ onNavigate
                 className="px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
               >
                 <option value="">All Branches</option>
-                <option value="CSE">CSE</option>
-                <option value="ECE">ECE</option>
-                <option value="EEE">EEE</option>
-                <option value="MECH">MECH</option>
-                <option value="CIVIL">CIVIL</option>
-                <option value="IT">IT</option>
-                <option value="AIML">AIML</option>
-                <option value="DS">DS</option>
-                <option value="BIOTECH">BIOTECH</option>
-                <option value="CHEM">CHEM</option>
+                {officialBranches.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
               </select>
 
               <select
@@ -436,12 +467,10 @@ export const AdminStudentsPage: React.FC<AdminStudentsPageProps> = ({ onNavigate
                 className="px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
               >
                 <option value="">All Sections</option>
-                <option value="A">Section A</option>
-                <option value="B">Section B</option>
-                <option value="C">Section C</option>
-                <option value="D">Section D</option>
-                <option value="E">Section E</option>
-                <option value="F">Section F</option>
+                <option value="1">Section 1</option>
+                <option value="2">Section 2</option>
+                <option value="3">Section 3</option>
+                <option value="A">Legacy Section A</option>
               </select>
 
               <button
@@ -516,7 +545,7 @@ export const AdminStudentsPage: React.FC<AdminStudentsPageProps> = ({ onNavigate
                         </td>
                         <td className="px-5 py-3.5 text-right space-x-2">
                           <button
-                            onClick={() => setSelectedStudent(student)}
+                            onClick={() => handleOpenStudentDetails(student)}
                             className="p-1 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
                             title="View Full Profile"
                           >
@@ -779,6 +808,52 @@ export const AdminStudentsPage: React.FC<AdminStudentsPageProps> = ({ onNavigate
                 <span className="text-slate-500">Registration Timestamp:</span>
                 <span className="font-mono text-slate-600">{new Date(selectedStudent.created_at).toLocaleString()}</span>
               </div>
+            </div>
+
+            {/* Founder Academic Assignment Update (Branch & Numeric Section) */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg mb-4 space-y-3">
+              <div className="text-xs font-bold text-slate-900">
+                Update Student Branch & Numeric Section (1, 2, 3)
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Official Branch</label>
+                  <select
+                    value={editBranch}
+                    onChange={(e) => setEditBranch(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-md bg-white"
+                  >
+                    {officialBranches.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Numeric Section</label>
+                  <select
+                    value={editSection}
+                    onChange={(e) => setEditSection(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-md bg-white"
+                  >
+                    <option value="1">Section 1</option>
+                    <option value="2">Section 2</option>
+                    <option value="3">Section 3</option>
+                  </select>
+                </div>
+              </div>
+              {academicSavedMsg && (
+                <p className="text-[11px] text-emerald-700 font-semibold">{academicSavedMsg}</p>
+              )}
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleSaveStudentAcademic}
+                className="px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
+              >
+                {actionLoading ? 'Saving...' : 'Save Branch & Section'}
+              </button>
             </div>
 
             <div className="flex justify-end gap-2">

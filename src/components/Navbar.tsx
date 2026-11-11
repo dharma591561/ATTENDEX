@@ -100,6 +100,14 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                 Faculty Console
               </button>
               <button
+                onClick={() => onNavigate('faculty-attendance')}
+                className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-900 ${
+                  currentView === 'faculty-attendance' ? 'text-slate-900 font-semibold' : ''
+                }`}
+              >
+                Attendance & Reports
+              </button>
+              <button
                 onClick={() => onNavigate('faculty-profile')}
                 className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-900 ${
                   currentView === 'faculty-profile' ? 'text-slate-900 font-semibold' : ''
@@ -118,7 +126,23 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                   currentView === 'admin-dashboard' ? 'text-slate-900 font-semibold' : ''
                 }`}
               >
-                Analytics
+                Overview
+              </button>
+              <button
+                onClick={() => onNavigate('admin-attendance')}
+                className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-900 ${
+                  currentView === 'admin-attendance' ? 'text-slate-900 font-semibold' : ''
+                }`}
+              >
+                Attendance
+              </button>
+              <button
+                onClick={() => onNavigate('admin-academic')}
+                className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-900 ${
+                  currentView === 'admin-academic' ? 'text-slate-900 font-semibold' : ''
+                }`}
+              >
+                Branches & GPS
               </button>
               <button
                 onClick={() => onNavigate('admin-students')}
@@ -126,7 +150,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                   currentView === 'admin-students' ? 'text-slate-900 font-semibold' : ''
                 }`}
               >
-                Student Applications
+                Students
               </button>
               <button
                 onClick={() => onNavigate('admin-faculty')}
@@ -134,7 +158,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                   currentView === 'admin-faculty' ? 'text-slate-900 font-semibold' : ''
                 }`}
               >
-                Faculty Applications
+                Faculty
               </button>
               <button
                 onClick={() => onNavigate('admin-audit')}
@@ -142,7 +166,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                   currentView === 'admin-audit' ? 'text-slate-900 font-semibold' : ''
                 }`}
               >
-                Audit Records
+                Audit Logs
               </button>
             </>
           )}

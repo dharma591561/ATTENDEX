@@ -10,6 +10,7 @@ import { authRouter } from './server/routes/authRoutes';
 import { studentRouter } from './server/routes/studentRoutes';
 import { facultyRouter } from './server/routes/facultyRoutes';
 import { adminRouter } from './server/routes/adminRoutes';
+import { attendanceRouter, syncExpiredQrSessions } from './server/routes/attendanceRoutes';
 import { initializeFounder, getEnvVar } from './scripts/init-founder';
 
 dotenv.config();
@@ -22,7 +23,7 @@ const isProd = process.env.NODE_ENV === 'production';
 // Initialize SQLite database schema
 initDatabase();
 
-// Clean expired sessions periodically (every hour)
+// Clean expired sessions periodically (every hour) and auto-close expired QR sessions (every 5 seconds)
 setInterval(() => {
   try {
     cleanExpiredSessions();
@@ -31,8 +32,16 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000);
 
+setInterval(() => {
+  try {
+    syncExpiredQrSessions();
+  } catch (err) {
+    console.error('Error syncing expired QR sessions:', err);
+  }
+}, 5000);
+
 // Basic middlewares
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
@@ -52,6 +61,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/students', studentRouter);
 app.use('/api/faculty', facultyRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/attendance', attendanceRouter);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {

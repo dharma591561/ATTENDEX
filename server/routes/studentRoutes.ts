@@ -12,6 +12,7 @@ import {
   invalidateOtherUserSessions,
 } from '../services/authService';
 import { validateRollNumber, verifyOtp, hasRecentlyVerifiedOtp, createVerificationGrant, validateAndConsumeGrant } from '../services/otpService';
+import { parseBranchSectionInput } from '../services/attendanceLogic';
 import { requireAuth, requireRole, setSessionCookie } from '../middleware/auth';
 import { uploadAvatarMiddleware, validateImageMagicBytes, saveAvatarFile } from '../middleware/upload';
 import { logAuditEvent } from '../services/auditService';
@@ -61,11 +62,26 @@ studentRouter.post('/register', async (req: Request, res: Response) => {
     }
     const normalizedRoll = rollCheck.normalized;
 
-    const normalizedBranch = branch.trim().toUpperCase();
-    const normalizedSection = section.trim().toUpperCase();
+    const parsedAcademic = parseBranchSectionInput(branch, section);
+    const normalizedBranch = parsedAcademic.branch;
+    const normalizedSection = parsedAcademic.section;
     if (!normalizedBranch || !normalizedSection) {
       return res.status(400).json({ error: 'Branch and section are required.' });
     }
+    if (!['1', '2', '3'].includes(normalizedSection)) {
+      return res.status(400).json({
+        error: 'Section must be a numeric section value: 1, 2, or 3 (not A, B, C).',
+      });
+    }
+    const branchRow = db
+      .prepare(`SELECT id, name, is_active FROM academic_branches WHERE UPPER(name) = UPPER(?) OR UPPER(code) = UPPER(?)`)
+      .get(normalizedBranch, normalizedBranch) as { id: string; name: string; is_active: number } | undefined;
+    if (!branchRow || branchRow.is_active !== 1) {
+      return res.status(400).json({
+        error: `Branch "${normalizedBranch}" is not an active college branch.`,
+      });
+    }
+    const canonicalBranchName = branchRow.name;
 
     // Determine verification grant to validate
     let grantToValidate = verificationGrant;
@@ -145,13 +161,13 @@ studentRouter.post('/register', async (req: Request, res: Response) => {
       db.prepare(`
         INSERT INTO student_profiles (id, user_id, full_name, roll_number, branch, section, profile_photo_url, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(profileId, userId, fullName.trim(), normalizedRoll, normalizedBranch, normalizedSection, photoUrl, now, now);
+      `).run(profileId, userId, fullName.trim(), normalizedRoll, canonicalBranchName, normalizedSection, photoUrl, now, now);
 
       // 4. Insert student application record with PENDING status
       db.prepare(`
         INSERT INTO student_applications (id, user_id, full_name, roll_number, branch, section, profile_photo_url, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
-      `).run(applicationId, userId, fullName.trim(), normalizedRoll, normalizedBranch, normalizedSection, photoUrl, now, now);
+      `).run(applicationId, userId, fullName.trim(), normalizedRoll, canonicalBranchName, normalizedSection, photoUrl, now, now);
     });
 
     registerTx();
