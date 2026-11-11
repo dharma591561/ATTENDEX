@@ -166,6 +166,12 @@ export interface AttendanceSessionInfo {
   presentCount?: number;
   absentCount?: number;
   unmarkedCount?: number;
+  absentStudentsDetailed?: Array<{
+    studentUserId: string;
+    fullName: string;
+    rollNumber: string;
+    shortRollNumber: string;
+  }>;
 }
 
 export interface AttendanceRosterEntry {
@@ -245,40 +251,34 @@ export interface StudentAttendanceHistoryItem {
   updatedAt: string;
 }
 
-
-export interface ActiveStudentQrSession {
-  sessionId: string;
+export interface PublicStudentDirectoryItem {
+  userId: string;
+  fullName: string;
+  rollNumber: string;
   branch: string;
   section: string;
-  sessionDate: string;
-  subjectName: string;
-  periodNumber: string | null;
-  startTime: string;
-  endTime: string;
-  facultyName: string;
-  expiresAtMs: number;
-  remainingSeconds: number;
-  myStatus: 'PRESENT' | 'ABSENT' | 'UNMARKED';
-  myRecordedAt: string | null;
-  gpsEnforcementEnabled: boolean;
-  demoModeEnabled: boolean;
-  campusName: string;
 }
 
-export interface StudentAttendanceHistoryItem {
-  sessionId: string;
-  sessionDate: string;
-  subjectName: string;
-  periodNumber: string | null;
-  startTime: string;
-  endTime: string;
-  method: 'MANUAL' | 'QR';
-  facultyName: string;
-  status: 'PRESENT' | 'ABSENT' | 'UNMARKED';
-  source: string;
-  verificationMode: string | null;
-  updatedAt: string;
+export interface PublicFacultyDirectoryItem {
+  userId: string;
+  fullName: string;
+  department: string;
+  designation: string;
 }
 
-
-
+export type PublicProfileView =
+  | {
+      userId: string;
+      role: 'STUDENT';
+      fullName: string;
+      rollNumber: string;
+      branch: string;
+      section: string;
+    }
+  | {
+      userId: string;
+      role: 'FACULTY';
+      fullName: string;
+      department: string;
+      designation: string;
+    };

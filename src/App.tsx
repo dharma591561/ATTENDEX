@@ -26,10 +26,25 @@ import { AdminStudentsPage } from './pages/admin/AdminStudentsPage';
 import { AdminFacultyPage } from './pages/admin/AdminFacultyPage';
 import { AdminAuditLogsPage } from './pages/admin/AdminAuditLogsPage';
 import { AdminAcademicConfigPage } from './pages/admin/AdminAcademicConfigPage';
+import { PeopleSearchPage } from './pages/PeopleSearchPage';
+
+function getUrlProfileParam(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const p = params.get('profile');
+    return p && p.trim() ? p.trim() : null;
+  } catch {
+    return null;
+  }
+}
 
 function MainRouter() {
   const { user, loading } = useAuth();
-  const [currentView, setCurrentView] = useState<string>('landing');
+  const [currentView, setCurrentView] = useState<string>(() => {
+    const profileParam = getUrlProfileParam();
+    return profileParam ? `profile:${profileParam}` : 'landing';
+  });
 
   // Loading state
   if (loading) {
@@ -43,8 +58,17 @@ function MainRouter() {
 
   // Guard routing based on role
   const navigate = (view: string) => {
-    // If user is logged in and selects landing or login, route to their role dashboard
+    const urlProfile = getUrlProfileParam();
+    if (!view.startsWith('profile:') && urlProfile) {
+      window.history.pushState({}, '', window.location.pathname);
+    }
+
+    // If user is logged in and selects landing or login, route to their role dashboard (or pending shared profile)
     if (user && (view === 'login' || view === 'landing')) {
+      if (urlProfile) {
+        setCurrentView(`profile:${urlProfile}`);
+        return;
+      }
       if (user.role === 'STUDENT') {
         setCurrentView('student-dashboard');
         return;
@@ -57,6 +81,12 @@ function MainRouter() {
         setCurrentView('admin-dashboard');
         return;
       }
+    }
+
+    // People Search & Profile View protection: must be an authenticated, approved user
+    if ((view === 'people-search' || view.startsWith('profile:')) && !user) {
+      setCurrentView('login');
+      return;
     }
 
     // Role protection - student registration and faculty application are public entry points
@@ -78,6 +108,15 @@ function MainRouter() {
   };
 
   const renderContent = () => {
+    // Direct shareable profile URL requires authentication
+    if (currentView.startsWith('profile:')) {
+      const targetProfileId = currentView.slice('profile:'.length);
+      if (!user) {
+        return <LoginPage onNavigate={navigate} />;
+      }
+      return <PeopleSearchPage onNavigate={navigate} initialProfileUserId={targetProfileId} />;
+    }
+
     switch (currentView) {
       case 'landing':
         return <LandingPage onNavigate={navigate} />;
@@ -91,6 +130,11 @@ function MainRouter() {
         return <ApplicationStatusPage onNavigate={navigate} />;
       case 'forgot-password':
         return <ForgotPasswordPage onNavigate={navigate} />;
+
+      // People Search & Directory
+      case 'people-search':
+        if (!user) return <LoginPage onNavigate={navigate} />;
+        return <PeopleSearchPage onNavigate={navigate} />;
 
       // Student views
       case 'student-dashboard':

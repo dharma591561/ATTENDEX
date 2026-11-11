@@ -435,6 +435,63 @@ export const api = {
         body: JSON.stringify(payload),
       }),
   },
+
+  people: {
+    searchStudents: (params: { q?: string; branch?: string; section?: string; limit?: number; offset?: number } = {}) => {
+      const query = new URLSearchParams();
+      if (params.q) query.set('q', params.q);
+      if (params.branch) query.set('branch', params.branch);
+      if (params.section) query.set('section', params.section);
+      if (params.limit) query.set('limit', String(params.limit));
+      if (params.offset) query.set('offset', String(params.offset));
+      return request<{
+        students: Array<{
+          userId: string;
+          fullName: string;
+          rollNumber: string;
+          branch: string;
+          section: string;
+        }>;
+        total: number;
+        limit: number;
+        offset: number;
+      }>(`/api/people/students?${query.toString()}`);
+    },
+    searchFaculty: (params: { q?: string; limit?: number; offset?: number } = {}) => {
+      const query = new URLSearchParams();
+      if (params.q) query.set('q', params.q);
+      if (params.limit) query.set('limit', String(params.limit));
+      if (params.offset) query.set('offset', String(params.offset));
+      return request<{
+        faculty: Array<{
+          userId: string;
+          fullName: string;
+          department: string;
+          designation: string;
+        }>;
+        total: number;
+        limit: number;
+        offset: number;
+      }>(`/api/people/faculty?${query.toString()}`);
+    },
+    getProfile: (userId: string) =>
+      request<{
+        profile:
+          | {
+              userId: string;
+              role: 'STUDENT';
+              fullName: string;
+              rollNumber: string;
+              branch: string;
+              section: string;
+            }
+          | {
+              userId: string;
+              role: 'FACULTY';
+              fullName: string;
+              department: string;
+              designation: string;
+            };
+      }>(`/api/people/profiles/${encodeURIComponent(userId)}`),
+  },
 };
-
-

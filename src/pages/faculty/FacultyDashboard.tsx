@@ -80,6 +80,12 @@ export const FacultyDashboard: React.FC<FacultyDashboardProps> = ({ onNavigate }
             <span>Open Attendance Console</span>
           </button>
           <button
+            onClick={() => onNavigate('people-search')}
+            className="px-4 py-2 text-xs font-semibold text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+          >
+            People Search
+          </button>
+          <button
             onClick={() => onNavigate('faculty-profile')}
             className="px-4 py-2 text-xs font-semibold text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
           >

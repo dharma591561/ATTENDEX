@@ -8,6 +8,7 @@ import {
   DailyReportPeriod,
 } from '../../types';
 import { downloadDailyReportPdf, shareOrDownloadDailyReportPdf } from '../../utils/pdfReport';
+import { ProfileViewModal } from '../../components/ProfileViewModal';
 import {
   ClipboardCheck,
   QrCode,
@@ -51,6 +52,7 @@ export const AttendanceManagementPage: React.FC<AttendanceManagementPageProps> =
   // Global Feedback
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(null);
 
   // ============================================================================
   // TAB 1: TAKE ATTENDANCE STATE (MANUAL & DYNAMIC QR)
@@ -1194,9 +1196,14 @@ export const AttendanceManagementPage: React.FC<AttendanceManagementPageProps> =
                             <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors">
                               <td className="px-4 py-3 font-mono text-slate-500">{entry.serialNumber}</td>
                               <td className="px-4 py-3">
-                                <span className="font-mono font-bold text-sm text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedProfileUserId(entry.studentUserId)}
+                                  title={`View profile for ${entry.fullName} (${entry.rollNumber})`}
+                                  className="font-mono font-bold text-sm text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded border border-slate-200 underline decoration-slate-400 cursor-pointer transition-colors"
+                                >
                                   {entry.shortRollNumber}
-                                </span>
+                                </button>
                                 {entry.isShortRollAmbiguous && (
                                   <span
                                     className="ml-1.5 text-[10px] font-mono text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200"
@@ -1206,7 +1213,16 @@ export const AttendanceManagementPage: React.FC<AttendanceManagementPageProps> =
                                   </span>
                                 )}
                               </td>
-                              <td className="px-4 py-3 font-mono font-medium text-slate-700">{entry.rollNumber}</td>
+                              <td className="px-4 py-3 font-mono font-medium text-slate-700">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedProfileUserId(entry.studentUserId)}
+                                  title={`View profile for ${entry.fullName} (${entry.rollNumber})`}
+                                  className="hover:text-slate-900 hover:underline cursor-pointer"
+                                >
+                                  {entry.rollNumber}
+                                </button>
+                              </td>
                               <td className="px-4 py-3 font-semibold text-slate-900">{entry.fullName}</td>
                               <td className="px-4 py-3">
                                 <div className="flex flex-wrap items-center gap-1.5">
@@ -1501,10 +1517,43 @@ export const AttendanceManagementPage: React.FC<AttendanceManagementPageProps> =
                                     ? 'Currently NIL (All students Present)'
                                     : `Saved absentees: ${period.absentShortRollsText}`}
                                 </div>
+                                {period.absentStudentsDetailed && period.absentStudentsDetailed.length > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                    <span className="text-[11px] text-slate-500">Profiles:</span>
+                                    {period.absentStudentsDetailed.map((stu) => (
+                                      <button
+                                        key={stu.studentUserId}
+                                        type="button"
+                                        onClick={() => setSelectedProfileUserId(stu.studentUserId)}
+                                        title={`View profile: ${stu.fullName} (${stu.rollNumber})`}
+                                        className="font-mono text-[11px] text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border border-slate-200 underline cursor-pointer"
+                                      >
+                                        {stu.shortRollNumber} ({stu.rollNumber})
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             ) : (
-                              <div className="font-mono text-xs text-slate-800">
-                                {period.absentCount === 0 ? 'NIL (All Present)' : period.absentShortRollsText}
+                              <div className="space-y-1.5">
+                                <div className="font-mono text-xs text-slate-800">
+                                  {period.absentCount === 0 ? 'NIL (All Present)' : period.absentShortRollsText}
+                                </div>
+                                {period.absentStudentsDetailed && period.absentStudentsDetailed.length > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    {period.absentStudentsDetailed.map((stu) => (
+                                      <button
+                                        key={stu.studentUserId}
+                                        type="button"
+                                        onClick={() => setSelectedProfileUserId(stu.studentUserId)}
+                                        title={`View profile: ${stu.fullName} (${stu.rollNumber})`}
+                                        className="font-mono text-[11px] text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border border-slate-200 underline cursor-pointer"
+                                      >
+                                        {stu.shortRollNumber} ({stu.rollNumber})
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </td>
@@ -1677,9 +1726,27 @@ export const AttendanceManagementPage: React.FC<AttendanceManagementPageProps> =
                           </span>
                         </td>
                         <td className="px-4 py-3.5 font-mono">
-                          <span className="text-emerald-700 font-bold">{s.presentCount ?? 0}</span> Present ·{' '}
-                          <span className="text-rose-700 font-bold">{s.absentCount ?? 0}</span> Absent /{' '}
-                          {s.totalStudents ?? 0}
+                          <div>
+                            <span className="text-emerald-700 font-bold">{s.presentCount ?? 0}</span> Present ·{' '}
+                            <span className="text-rose-700 font-bold">{s.absentCount ?? 0}</span> Absent /{' '}
+                            {s.totalStudents ?? 0}
+                          </div>
+                          {s.absentStudentsDetailed && s.absentStudentsDetailed.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1 mt-1">
+                              <span className="text-[10px] font-sans text-slate-500">Absent Rolls:</span>
+                              {s.absentStudentsDetailed.map((stu) => (
+                                <button
+                                  key={stu.studentUserId}
+                                  type="button"
+                                  onClick={() => setSelectedProfileUserId(stu.studentUserId)}
+                                  title={`View profile: ${stu.fullName} (${stu.rollNumber})`}
+                                  className="font-mono text-[11px] text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border border-slate-200 underline cursor-pointer"
+                                >
+                                  {stu.shortRollNumber}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3.5 text-right">
                           <button
@@ -1730,6 +1797,12 @@ export const AttendanceManagementPage: React.FC<AttendanceManagementPageProps> =
           </div>
         </div>
       )}
+
+      {/* Lightweight Student Profile Modal (preserves unsaved attendance work) */}
+      <ProfileViewModal
+        userId={selectedProfileUserId}
+        onClose={() => setSelectedProfileUserId(null)}
+      />
     </div>
   );
 };

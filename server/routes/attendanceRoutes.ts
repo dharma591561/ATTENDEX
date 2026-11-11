@@ -1848,27 +1848,47 @@ attendanceRouter.get(
       sql += ` ORDER BY a.session_date DESC, a.start_time DESC, a.created_at DESC LIMIT 100`;
 
       const rows = db.prepare(sql).all(...params) as any[];
-      const sessions = rows.map((r) => ({
-        id: r.id,
-        facultyUserId: r.faculty_user_id,
-        facultyName: r.faculty_name,
-        branch: r.branch_name_snapshot,
-        section: r.section,
-        sessionDate: r.session_date,
-        subjectName: r.subject_name,
-        periodNumber: r.period_number,
-        startTime: r.start_time,
-        endTime: r.end_time,
-        method: r.method,
-        status: r.status,
-        totalStudents: r.total_students || 0,
-        presentCount: r.present_count || 0,
-        absentCount: r.absent_count || 0,
-        unmarkedCount: r.unmarked_count || 0,
-        canEdit: req.user!.role === 'FOUNDER' || r.faculty_user_id === req.user!.id,
-        createdAt: r.created_at,
-        submittedAt: r.submitted_at,
-      }));
+      const getAbsenteesStmt = db.prepare(
+        `SELECT student_user_id, roll_number_snapshot, short_roll_snapshot, full_name_snapshot
+         FROM attendance_entries
+         WHERE session_id = ? AND status = 'ABSENT'
+         ORDER BY roll_number_snapshot ASC`
+      );
+      const sessions = rows.map((r) => {
+        const absentees = getAbsenteesStmt.all(r.id) as Array<{
+          student_user_id: string;
+          roll_number_snapshot: string;
+          short_roll_snapshot: string;
+          full_name_snapshot: string;
+        }>;
+        return {
+          id: r.id,
+          facultyUserId: r.faculty_user_id,
+          facultyName: r.faculty_name,
+          branch: r.branch_name_snapshot,
+          section: r.section,
+          sessionDate: r.session_date,
+          subjectName: r.subject_name,
+          periodNumber: r.period_number,
+          startTime: r.start_time,
+          endTime: r.end_time,
+          method: r.method,
+          status: r.status,
+          totalStudents: r.total_students || 0,
+          presentCount: r.present_count || 0,
+          absentCount: r.absent_count || 0,
+          unmarkedCount: r.unmarked_count || 0,
+          absentStudentsDetailed: absentees.map((a) => ({
+            studentUserId: a.student_user_id,
+            fullName: a.full_name_snapshot,
+            rollNumber: a.roll_number_snapshot,
+            shortRollNumber: a.short_roll_snapshot,
+          })),
+          canEdit: req.user!.role === 'FOUNDER' || r.faculty_user_id === req.user!.id,
+          createdAt: r.created_at,
+          submittedAt: r.submitted_at,
+        };
+      });
 
       return res.json({ sessions });
     } catch (err: any) {

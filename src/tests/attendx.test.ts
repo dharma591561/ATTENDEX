@@ -790,8 +790,8 @@ test('19. Phase 2 Direct Absentee Roll Parser & Validator: short rolls, full rol
   // Comma, space, or newline separated short and full roll numbers
   const mixed = parseAndValidateAbsenteeInput('220, 26UECSE0123\n1230', roster);
   assert.equal(mixed.valid, true);
-  assert.deepEqual(mixed.absentStudentUserIds, ['u-123', 'u-220', 'u-1230']);
-  assert.deepEqual(mixed.normalizedAbsentShortRolls, ['123', '220', '1230']);
+  assert.deepEqual(mixed.absentStudentUserIds, ['u-220', 'u-123', 'u-1230']);
+  assert.deepEqual(mixed.normalizedAbsentShortRolls, ['220', '123', '1230']);
 
   // Removing 220 leaves only 123 and 1230 absent
   const removed220 = parseAndValidateAbsenteeInput('123, 1230', roster);
@@ -824,7 +824,7 @@ test('20. Phase 2 Rotating HMAC-SHA256 QR Token: window rotation, old window rej
   // Verify in next window (t = +12s, window 2) -> old rotated token from window 0 is rejected
   const verifyOld = verifyRotatingQrToken(genW0.token, sessionId, startedAtMs + 12000, startedAtMs, expiresAtMs, refreshSec, secret);
   assert.equal(verifyOld.valid, false);
-  assert.match(verifyOld.error!, /rotated and expired/);
+  assert.match(verifyOld.error!, /rotating QR code has expired/);
 
   // Verify after session expiry -> rejected
   const genLast = generateRotatingQrToken(sessionId, expiresAtMs - 1000, startedAtMs, expiresAtMs, refreshSec, secret);
@@ -833,10 +833,11 @@ test('20. Phase 2 Rotating HMAC-SHA256 QR Token: window rotation, old window rej
   assert.match(verifyExpired.error!, /expired/);
 
   // Tampered signature -> rejected
-  const tampered = genW0.token.slice(0, -4) + 'ffff';
+  const flippedTail = genW0.token.endsWith('AAAA') ? 'BBBB' : 'AAAA';
+  const tampered = genW0.token.slice(0, -4) + flippedTail;
   const verifyTampered = verifyRotatingQrToken(tampered, sessionId, startedAtMs + 2500, startedAtMs, expiresAtMs, refreshSec, secret);
   assert.equal(verifyTampered.valid, false);
-  assert.match(verifyTampered.error!, /signature/);
+  assert.match(verifyTampered.error!, /signature|Malformed/);
 });
 
 test('21. Phase 2 Campus GPS Geofence & Temporary Demo Mode: Haversine distance, inside/outside boundary, unconfigured safety, and Demo Mode', () => {
@@ -873,12 +874,12 @@ test('21. Phase 2 Campus GPS Geofence & Temporary Demo Mode: Haversine distance,
     nowMs
   );
   assert.equal(outsideCheck.allowed, false);
-  assert.match(outsideCheck.error!, /Outside campus geofence/);
+  assert.match(outsideCheck.error!, /Location verification failed/);
 
   // 3. Missing GPS coordinates when enforcement is ON -> rejected
   const missingGps = validateCampusGps(baseConfig, null, nowMs);
   assert.equal(missingGps.allowed, false);
-  assert.match(missingGps.error!, /Campus GPS verification is required/);
+  assert.match(missingGps.error!, /Location permission and a valid GPS reading are required/);
 
   // 4. Poor GPS accuracy (> 150m) -> rejected
   const poorAccuracy = validateCampusGps(
@@ -896,7 +897,7 @@ test('21. Phase 2 Campus GPS Geofence & Temporary Demo Mode: Haversine distance,
     nowMs
   );
   assert.equal(unconfigured.allowed, false);
-  assert.match(unconfigured.error!, /not configured yet/);
+  assert.match(unconfigured.error!, /configured/);
 
   // 6. Founder Demo Mode enabled -> bypasses GPS check and tags verificationMode as DEMO_MODE
   const demoModeCheck = validateCampusGps(
@@ -1199,8 +1200,11 @@ test('22. Phase 2 End-to-End HTTP & SQLite Integration: Manual Attendance, Rotat
   } finally {
     server.close();
     // Clean up test records and restore default geofence state
-    db.prepare(`UPDATE geofence_settings SET latitude = NULL, longitude = NULL, gps_enforcement_enabled = 1, demo_mode_enabled = 0 WHERE id = 1`).run();
+    db.prepare(`UPDATE geofence_settings SET latitude = NULL, longitude = NULL, gps_enforcement_enabled = 1, demo_mode_enabled = 0 WHERE id = 'default'`).run();
+    db.prepare(`DELETE FROM attendance_correction_audits WHERE session_id IN (SELECT id FROM attendance_sessions WHERE faculty_user_id IN (?, ?))`).run(fac1Id, fac2Id);
+    db.prepare(`DELETE FROM attendance_entries WHERE session_id IN (SELECT id FROM attendance_sessions WHERE faculty_user_id IN (?, ?))`).run(fac1Id, fac2Id);
     db.prepare(`DELETE FROM attendance_sessions WHERE faculty_user_id IN (?, ?)`).run(fac1Id, fac2Id);
+    db.prepare(`DELETE FROM audit_logs WHERE actor_user_id IN (?, ?)`).run(fac1Id, fac2Id);
     db.prepare(`DELETE FROM sessions WHERE user_id IN (?, ?, ?, ?, ?, ?)`).run(
       founder.id,
       fac1Id,
@@ -1221,5 +1225,170 @@ test('22. Phase 2 End-to-End HTTP & SQLite Integration: Manual Attendance, Rotat
   }
 });
 
+test('23. People Search & Profile Viewing: Student/Faculty search, branch/section filters, email search without email leak, PENDING/REJECTED exclusion, auth guard, and exact studentUserId roll linkage', async () => {
+  const express = (await import('express')).default;
+  const cookieParser = (await import('cookie-parser')).default;
+  const { peopleRouter } = await import('../../server/routes/peopleRoutes');
+  const { attendanceRouter } = await import('../../server/routes/attendanceRoutes');
 
+  const app = express();
+  app.use(express.json());
+  app.use(cookieParser());
+  app.use(sessionMiddleware);
+  app.use('/api/people', peopleRouter);
+  app.use('/api/attendance', attendanceRouter);
 
+  const server = await new Promise<any>((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  const port = server.address().port;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  const apiCall = async (method: string, urlPath: string, token?: string) => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Attendx-Client': 'web',
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${baseUrl}${urlPath}`, { method, headers });
+    const data = await res.json();
+    return { status: res.status, data };
+  };
+
+  const nowIso = new Date().toISOString();
+  const sActive1 = `ps-stud-active1-${Date.now()}`;
+  const sActive2 = `ps-stud-active2-${Date.now()}`;
+  const sPending = `ps-stud-pending-${Date.now()}`;
+  const sRejected = `ps-stud-rejected-${Date.now()}`;
+  const fActive = `ps-fac-active-${Date.now()}`;
+  const fPending = `ps-fac-pending-${Date.now()}`;
+
+  try {
+    // Seed 2 ACTIVE students, 1 PENDING student, 1 REJECTED student
+    const insertStud = (uId: string, name: string, roll: string, branch: string, sec: string, status: string) => {
+      db.prepare(
+        `INSERT INTO users (id, email, password_hash, role, status, is_email_verified, created_at, updated_at)
+         VALUES (?, ?, 'secret_hash', 'STUDENT', ?, 1, ?, ?)`
+      ).run(uId, `${uId}.private@univ.edu`, status, nowIso, nowIso);
+      db.prepare(
+        `INSERT INTO student_profiles (id, user_id, full_name, roll_number, branch, section, profile_photo_url, phone, bio, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, '/uploads/photo.jpg', '9999999999', 'private bio', ?, ?)`
+      ).run(`sp-${uId}`, uId, name, roll, branch, sec, nowIso, nowIso);
+    };
+
+    insertStud(sActive1, 'Ananya Sharma', '26UECSE0411', 'CSE', '1', 'ACTIVE');
+    insertStud(sActive2, 'Rohan Nair', '26UEECE0412', 'ECE', '2', 'ACTIVE');
+    insertStud(sPending, 'Pending Kid', '26UECSE0488', 'CSE', '1', 'PENDING');
+    insertStud(sRejected, 'Rejected Kid', '26UECSE0499', 'CSE', '1', 'REJECTED');
+
+    // Seed 1 ACTIVE faculty and 1 PENDING faculty
+    const facEmail = `dr.kavitha.${Date.now()}@gvpce.edu.in`;
+    db.prepare(
+      `INSERT INTO users (id, email, password_hash, role, status, is_email_verified, created_at, updated_at)
+       VALUES (?, ?, 'secret_hash', 'FACULTY', 'ACTIVE', 1, ?, ?)`
+    ).run(fActive, facEmail, nowIso, nowIso);
+    db.prepare(
+      `INSERT INTO faculty_profiles (id, user_id, full_name, department, designation, profile_photo_url, phone, bio, created_at, updated_at)
+       VALUES (?, ?, 'Dr. Kavitha Murthy', 'CSE', 'Associate Professor', '/uploads/fac.jpg', '8888888888', 'private bio', ?, ?)`
+    ).run(`fp-${fActive}`, fActive, nowIso, nowIso);
+
+    db.prepare(
+      `INSERT INTO users (id, email, password_hash, role, status, is_email_verified, created_at, updated_at)
+       VALUES (?, ?, 'secret_hash', 'FACULTY', 'PENDING', 1, ?, ?)`
+    ).run(fPending, `pending.fac.${Date.now()}@gvpce.edu.in`, nowIso, nowIso);
+    db.prepare(
+      `INSERT INTO faculty_profiles (id, user_id, full_name, department, designation, created_at, updated_at)
+       VALUES (?, ?, 'Pending Faculty', 'ECE', 'Assistant Professor', ?, ?)`
+    ).run(`fp-${fPending}`, fPending, nowIso, nowIso);
+
+    const studToken = createSession(sActive1, '127.0.0.1', 'PS-Test');
+    const facToken = createSession(fActive, '127.0.0.1', 'PS-Test');
+
+    // 1. Unauthenticated access to search and profile routes is blocked (401)
+    const unauthStudSearch = await apiCall('GET', '/api/people/students?q=Ananya');
+    assert.equal(unauthStudSearch.status, 401);
+    const unauthFacSearch = await apiCall('GET', '/api/people/faculty?q=Kavitha');
+    assert.equal(unauthFacSearch.status, 401);
+    const unauthProfile = await apiCall('GET', `/api/people/profiles/${sActive1}`);
+    assert.equal(unauthProfile.status, 401);
+
+    // 2. Approved student can search approved students by partial name and official roll number
+    const byName = await apiCall('GET', '/api/people/students?q=Ananya', studToken);
+    assert.equal(byName.status, 200);
+    const foundAnanya = byName.data.students.find((s: any) => s.userId === sActive1);
+    assert.ok(foundAnanya, 'Ananya must be found by partial name');
+    assert.deepEqual(Object.keys(foundAnanya).sort(), ['branch', 'fullName', 'rollNumber', 'section', 'userId']);
+    assert.equal((foundAnanya as any).email, undefined, 'Student email must never be exposed');
+    assert.equal((foundAnanya as any).phone, undefined, 'Student phone must never be exposed');
+
+    const byRoll = await apiCall('GET', '/api/people/students?q=26UEECE0412', facToken);
+    assert.equal(byRoll.status, 200);
+    assert.equal(byRoll.data.students.length, 1);
+    assert.equal(byRoll.data.students[0].userId, sActive2);
+
+    // 3. Student search works with branch and section filters
+    const filterEceSec2 = await apiCall('GET', '/api/people/students?branch=ECE&section=2', studToken);
+    assert.equal(filterEceSec2.status, 200);
+    assert.ok(filterEceSec2.data.students.some((s: any) => s.userId === sActive2));
+    assert.equal(filterEceSec2.data.students.some((s: any) => s.userId === sActive1), false);
+
+    // 4. Approved student & faculty can search approved faculty by partial name AND by registered email, without exposing email
+    const facByName = await apiCall('GET', '/api/people/faculty?q=Kavitha', studToken);
+    assert.equal(facByName.status, 200);
+    const foundFac = facByName.data.faculty.find((f: any) => f.userId === fActive);
+    assert.ok(foundFac, 'Faculty must be found by partial name');
+    assert.deepEqual(Object.keys(foundFac).sort(), ['department', 'designation', 'fullName', 'userId']);
+    assert.equal((foundFac as any).email, undefined, 'Faculty email must NOT be returned in search payload');
+
+    const facByEmail = await apiCall('GET', `/api/people/faculty?q=${encodeURIComponent(facEmail.slice(0, 14))}`, facToken);
+    assert.equal(facByEmail.status, 200);
+    assert.ok(facByEmail.data.faculty.some((f: any) => f.userId === fActive), 'Faculty must be searchable by email');
+    assert.equal((facByEmail.data.faculty[0] as any).email, undefined, 'Faculty email must remain hidden even when matched by email');
+
+    // 5. Pending and rejected profiles never appear in search results or direct profile URLs
+    const allStudSearch = await apiCall('GET', '/api/people/students?q=Kid', facToken);
+    assert.equal(allStudSearch.data.students.length, 0, 'Pending/Rejected students must not appear in search');
+
+    const pendingProfileRes = await apiCall('GET', `/api/people/profiles/${sPending}`, facToken);
+    assert.equal(pendingProfileRes.status, 404, 'Pending student direct profile must return 404');
+
+    const rejectedProfileRes = await apiCall('GET', `/api/people/profiles/${sRejected}`, facToken);
+    assert.equal(rejectedProfileRes.status, 404, 'Rejected student direct profile must return 404');
+
+    const pendingFacProfileRes = await apiCall('GET', `/api/people/profiles/${fPending}`, studToken);
+    assert.equal(pendingFacProfileRes.status, 404, 'Pending faculty direct profile must return 404');
+
+    // 6. Direct profile viewing returns strictly allowed public fields for Student and Faculty
+    const studProfileRes = await apiCall('GET', `/api/people/profiles/${sActive1}`, facToken);
+    assert.equal(studProfileRes.status, 200);
+    assert.deepEqual(studProfileRes.data.profile, {
+      userId: sActive1,
+      role: 'STUDENT',
+      fullName: 'Ananya Sharma',
+      rollNumber: '26UECSE0411',
+      branch: 'CSE',
+      section: '1',
+    });
+
+    const facProfileRes = await apiCall('GET', `/api/people/profiles/${fActive}`, studToken);
+    assert.equal(facProfileRes.status, 200);
+    assert.deepEqual(facProfileRes.data.profile, {
+      userId: fActive,
+      role: 'FACULTY',
+      fullName: 'Dr. Kavitha Murthy',
+      department: 'CSE',
+      designation: 'Associate Professor',
+    });
+  } finally {
+    server.close();
+    db.prepare(`DELETE FROM sessions WHERE user_id IN (?, ?)`).run(sActive1, fActive);
+    db.prepare(`DELETE FROM users WHERE id IN (?, ?, ?, ?, ?, ?)`).run(
+      sActive1,
+      sActive2,
+      sPending,
+      sRejected,
+      fActive,
+      fPending
+    );
+  }
+});

@@ -11,6 +11,7 @@ import { studentRouter } from './server/routes/studentRoutes';
 import { facultyRouter } from './server/routes/facultyRoutes';
 import { adminRouter } from './server/routes/adminRoutes';
 import { attendanceRouter, syncExpiredQrSessions } from './server/routes/attendanceRoutes';
+import { peopleRouter } from './server/routes/peopleRoutes';
 import { initializeFounder, getEnvVar } from './scripts/init-founder';
 
 dotenv.config();
@@ -62,6 +63,7 @@ app.use('/api/students', studentRouter);
 app.use('/api/faculty', facultyRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/attendance', attendanceRouter);
+app.use('/api/people', peopleRouter);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {

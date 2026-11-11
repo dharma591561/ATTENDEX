@@ -79,6 +79,16 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                 Dashboard
               </button>
               <button
+                onClick={() => onNavigate('people-search')}
+                className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-900 ${
+                  currentView === 'people-search' || currentView.startsWith('profile:')
+                    ? 'text-slate-900 font-semibold'
+                    : ''
+                }`}
+              >
+                People Search
+              </button>
+              <button
                 onClick={() => onNavigate('student-profile')}
                 className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-900 ${
                   currentView === 'student-profile' ? 'text-slate-900 font-semibold' : ''
@@ -108,6 +118,16 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                 Attendance & Reports
               </button>
               <button
+                onClick={() => onNavigate('people-search')}
+                className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-900 ${
+                  currentView === 'people-search' || currentView.startsWith('profile:')
+                    ? 'text-slate-900 font-semibold'
+                    : ''
+                }`}
+              >
+                People Search
+              </button>
+              <button
                 onClick={() => onNavigate('faculty-profile')}
                 className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-900 ${
                   currentView === 'faculty-profile' ? 'text-slate-900 font-semibold' : ''
@@ -135,6 +155,16 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                 }`}
               >
                 Attendance
+              </button>
+              <button
+                onClick={() => onNavigate('people-search')}
+                className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-900 ${
+                  currentView === 'people-search' || currentView.startsWith('profile:')
+                    ? 'text-slate-900 font-semibold'
+                    : ''
+                }`}
+              >
+                People Search
               </button>
               <button
                 onClick={() => onNavigate('admin-academic')}
