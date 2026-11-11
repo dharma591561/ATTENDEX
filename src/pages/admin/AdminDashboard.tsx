@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import { AdminStats, AuditLog } from '../../types';
-import { ShieldCheck, Users, BookOpen, Clock, CheckCircle2, XCircle, ArrowRight, Activity, Database, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Users, BookOpen, Clock, CheckCircle2, XCircle, ArrowRight, Activity, AlertCircle } from 'lucide-react';
 
 interface AdminDashboardProps {
   onNavigate: (view: string) => void;
@@ -41,7 +41,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
             <span>Super Administrator Console</span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">System Oversight & Governance</h1>
-          <p className="text-xs text-slate-500 mt-1">Real database telemetry, roster statistics, and application queues</p>
+          <p className="text-xs text-slate-500 mt-1">Institutional overview, application queues, and administrative activity</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -73,7 +73,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
         </div>
       )}
 
-      {/* Database Statistics Grid */}
+      {/* Statistics Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         {/* Total Active Students */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
@@ -175,28 +175,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
                 </div>
                 <ArrowRight className="w-4 h-4 text-slate-400" />
               </button>
-
-              <button
-                onClick={() => onNavigate('admin-settings')}
-                className="w-full text-left p-3 rounded-lg border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <div className="text-xs font-semibold text-slate-900">System & SMTP Settings</div>
-                  <div className="text-[11px] text-slate-500">Verify SQLite database & email service</div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400" />
-              </button>
             </div>
-          </div>
-
-          <div className="bg-slate-900 text-white rounded-xl p-5 shadow-xs text-xs">
-            <div className="flex items-center gap-2 font-bold mb-1">
-              <Database className="w-4 h-4 text-purple-400" />
-              <span>Database Invariant Notice</span>
-            </div>
-            <p className="text-slate-300 text-[11px] leading-relaxed">
-              Founder uniqueness is strictly enforced at database level with a unique partial index (<code className="text-purple-300">idx_single_founder</code>). Only one super administrator account can exist in this system.
-            </p>
           </div>
         </div>
 

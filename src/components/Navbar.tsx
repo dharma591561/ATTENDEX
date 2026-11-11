@@ -144,14 +144,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
               >
                 Audit Records
               </button>
-              <button
-                onClick={() => onNavigate('admin-settings')}
-                className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-900 ${
-                  currentView === 'admin-settings' ? 'text-slate-900 font-semibold' : ''
-                }`}
-              >
-                System & SMTP
-              </button>
             </>
           )}
         </nav>

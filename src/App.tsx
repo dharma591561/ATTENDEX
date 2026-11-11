@@ -24,7 +24,6 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminStudentsPage } from './pages/admin/AdminStudentsPage';
 import { AdminFacultyPage } from './pages/admin/AdminFacultyPage';
 import { AdminAuditLogsPage } from './pages/admin/AdminAuditLogsPage';
-import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
 
 function MainRouter() {
   const { user, loading } = useAuth();
@@ -112,8 +111,6 @@ function MainRouter() {
         return <AdminFacultyPage onNavigate={navigate} />;
       case 'admin-audit':
         return <AdminAuditLogsPage onNavigate={navigate} />;
-      case 'admin-settings':
-        return <AdminSettingsPage onNavigate={navigate} />;
 
       default:
         return <LandingPage onNavigate={navigate} />;

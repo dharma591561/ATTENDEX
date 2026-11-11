@@ -114,7 +114,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, defaultRole = 
             <div>
               <span className="font-semibold">Super Administrator Access:</span>
               <p className="mt-0.5 text-purple-800 text-[11px]">
-                Founder accounts are initialized privately via the server-side CLI command (<code className="bg-purple-100 px-1 py-0.5 rounded">npm run init-founder</code>). No public signup is permitted.
+                Restricted to authorized institutional administration. Public registration is not available for this role.
               </p>
             </div>
           </div>
@@ -162,7 +162,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, defaultRole = 
                     ? 'student@university.edu'
                     : selectedRole === 'FACULTY'
                     ? 'professor@university.edu'
-                    : 'founder@classync.internal'
+                    : 'admin@university.edu'
                 }
                 className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 bg-white"
               />
@@ -263,7 +263,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, defaultRole = 
 
           {selectedRole === 'FOUNDER' && (
             <p className="text-[11px] text-slate-400">
-              Founder login requires prior CLI initialization on the server.
+              Authorized Founder Administrator access only.
             </p>
           )}
         </div>

@@ -43,7 +43,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
           </div>
 
           <div>
-            <span>Phase 1 Verified Architecture</span>
+            <span>Academic Portal & Attendance Management</span>
           </div>
         </div>
       </div>

@@ -1,20 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../api/client';
-import { GraduationCap, BookOpen, ShieldCheck, ArrowRight, CheckCircle2, AlertCircle, Mail, Database } from 'lucide-react';
+import React from 'react';
+import { GraduationCap, BookOpen, ShieldCheck, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 interface LandingPageProps {
   onNavigate: (view: string) => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
-  const [smtpStatus, setSmtpStatus] = useState<{ configured: boolean; message: string } | null>(null);
-
-  useEffect(() => {
-    api.auth.getSmtpStatus().then(setSmtpStatus).catch(() => {
-      setSmtpStatus({ configured: false, message: 'Unable to check SMTP status' });
-    });
-  }, []);
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Hero Section */}
@@ -22,13 +13,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-3xl">
             <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-              Official College Academic System · Phase 1
+              Official College Academic System
             </div>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-slate-900 leading-tight">
               CLASSYNC College Portal
             </h1>
             <p className="mt-4 text-base sm:text-lg text-slate-600 leading-relaxed">
-              A secure, relational database-backed college platform supporting student registration, verified academic roll number mapping, faculty application review, and super administrator oversight.
+              A centralized academic platform for student registration, faculty membership applications, attendance management, and institutional administration.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -56,11 +47,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
         </div>
       </section>
 
-      {/* Account Roles & Architecture Section */}
+      {/* Account Roles & Portals Section */}
       <section className="py-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
         <div className="mb-8">
           <h2 className="text-xl font-bold text-slate-900">Academic Portals & Access Control</h2>
-          <p className="text-sm text-slate-600 mt-1">Three distinct access levels with server-side validation and role authorization.</p>
+          <p className="text-sm text-slate-600 mt-1">Select your academic role to register, check your application status, or sign in.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -71,19 +62,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                 <GraduationCap className="w-5 h-5" />
               </div>
               <h3 className="text-base font-bold text-slate-900">Student Portal</h3>
-              <p className="text-xs text-slate-500 mt-1 font-mono">Status: PENDING → APPROVED</p>
+              <p className="text-xs text-slate-500 mt-1">Academic Enrollment & Profile Access</p>
               <ul className="mt-4 space-y-2 text-xs text-slate-600">
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>University email OTP verification required</span>
+                  <span>Register with your university email and academic roll number</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Enforces unique normalized roll numbers across branches</span>
+                  <span>Track your registration approval status online</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Requires Founder approval before login is unlocked</span>
+                  <span>Access your student dashboard and profile once approved</span>
                 </li>
               </ul>
             </div>
@@ -104,19 +95,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                 <BookOpen className="w-5 h-5" />
               </div>
               <h3 className="text-base font-bold text-slate-900">Faculty & Professors</h3>
-              <p className="text-xs text-slate-500 mt-1 font-mono">Status: PENDING → APPROVED</p>
+              <p className="text-xs text-slate-500 mt-1">Departmental & Course Management</p>
               <ul className="mt-4 space-y-2 text-xs text-slate-600">
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Department and designation application</span>
+                  <span>Submit your application with department and designation details</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Email verification during submission</span>
+                  <span>Verify your university email during application submission</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Requires Founder approval before login is unlocked</span>
+                  <span>Access the faculty console after administrator approval</span>
                 </li>
               </ul>
             </div>
@@ -137,19 +128,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <h3 className="text-base font-bold text-slate-900">Founder & Super Admin</h3>
-              <p className="text-xs text-slate-500 mt-1 font-mono">Strict Invariant: Exactly 1 Account</p>
+              <p className="text-xs text-slate-500 mt-1">Institutional Administration & Oversight</p>
               <ul className="mt-4 space-y-2 text-xs text-slate-600">
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>No public registration or signup endpoints</span>
+                  <span>Review and approve student registration applications</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Created privately via terminal CLI script</span>
+                  <span>Evaluate and manage faculty membership applications</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>Review student & faculty applications and manage roster</span>
+                  <span>Manage the student directory and administrative audit records</span>
                 </li>
               </ul>
             </div>
@@ -163,61 +154,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate }) => {
             </div>
           </div>
         </div>
-
-        {/* System & SMTP Environment Status Notice */}
-        <div className="mt-8 bg-white border border-slate-200 rounded-xl p-6">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700 shrink-0">
-              <Mail className="w-4 h-4" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h4 className="text-sm font-semibold text-slate-900">Real Email & SMTP Status</h4>
-                {smtpStatus && (
-                  <span
-                    className={`inline-flex items-center text-[11px] font-mono px-2 py-0.5 rounded-sm ${
-                      smtpStatus.configured
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : 'bg-amber-50 text-amber-700'
-                    }`}
-                  >
-                    {smtpStatus.configured ? 'SMTP Configured & Verified' : 'SMTP Credentials Needed'}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-600 mt-1">
-                {smtpStatus?.message || 'Checking backend SMTP configuration...'}
-              </p>
-              {!smtpStatus?.configured && (
-                <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700">
-                  <p className="font-semibold text-slate-800 mb-1">How to enable real Gmail SMTP delivery:</p>
-                  <ol className="list-decimal list-inside space-y-1 text-slate-600">
-                    <li>Create a 16-character App Password at <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-blue-600 underline">Google Account Security</a>.</li>
-                    <li>Configure <code className="bg-slate-200 px-1 py-0.5 rounded">SMTP_HOST=smtp.gmail.com</code>, <code className="bg-slate-200 px-1 py-0.5 rounded">SMTP_PORT=587</code>, <code className="bg-slate-200 px-1 py-0.5 rounded">SMTP_USER=your_email@gmail.com</code>, and <code className="bg-slate-200 px-1 py-0.5 rounded">SMTP_PASS=your_app_password</code> in <code className="bg-slate-200 px-1 py-0.5 rounded">.env</code>.</li>
-                  </ol>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Database & Roster Info */}
-        <div className="mt-6 bg-white border border-slate-200 rounded-xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700 shrink-0">
-              <Database className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-slate-900">Persistent Relational Storage</div>
-              <div className="text-xs text-slate-500 font-mono">SQLite · Database Table Indexes Active</div>
-            </div>
-          </div>
-          <div className="text-xs text-slate-600">
-            Multi-Branch Academic Roll Number Validation · Example: <span className="font-mono font-semibold text-slate-900">26UECSE0220</span>
-          </div>
-        </div>
       </section>
     </div>
   );
 };
+
 
